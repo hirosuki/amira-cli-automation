@@ -2,38 +2,32 @@ name: Daily Gmail & Calendar Briefing
 
 on:
   schedule:
-    - cron: '0 8 * * *'
-  workflow_dispatch:
+      - cron: 0 8 * * *
+        workflow_dispatch:
 
-jobs:
-  briefing:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      
-      - name: Install dependencies
-        run: npm install
-      
-      - name: Create config files
-        run: |
-          mkdir -p ~/.config
-          echo '${{ secrets.GOOGLE_CREDENTIALS }}' > ~/.amira-cli-credentials.json
-          echo '${{ secrets.AMIRA_CONFIG }}' > ~/.amira-cli-config.json
-          echo '${{ secrets.GOOGLE_TOKENS }}' > ~/.amira-cli-tokens.json
-      
-      - name: Run daily briefing
-        run: node index.js daily-briefing
-      
-      - name: Upload output
-        uses: actions/upload-artifact@v4
-        with:
-          name: daily-briefing-output
-          path: ~/Desktop/Claude/Outputs/
-          if-no-files-found: ignore
+        jobs:
+          briefing:
+              runs-on: ubuntu-latest
+
+                  steps:
+                      - uses: actions/checkout@v4
+
+                          - uses: actions/setup-node@v4
+                                with:
+                                        node-version: 20
+
+                                            - run: npm install
+
+                                                - run: |
+                                                        mkdir -p ~/.config
+                                                                echo '${{ secrets.GOOGLE_CREDENTIALS }}' > ~/.amira-cli-credentials.json
+                                                                        echo '${{ secrets.AMIRA_CONFIG }}' > ~/.amira-cli-config.json
+                                                                                echo '${{ secrets.GOOGLE_TOKENS }}' > ~/.amira-cli-tokens.json
+
+                                                                                    - run: node index.js daily-briefing
+
+                                                                                        - uses: actions/upload-artifact@v4
+                                                                                              with:
+                                                                                                      name: daily-briefing-output
+                                                                                                              path: ~/Desktop/Claude/Outputs/
+                                                                                                                      if-no-files-found: ignore
