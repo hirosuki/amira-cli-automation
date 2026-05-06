@@ -2,8 +2,7 @@ name: Daily Gmail & Calendar Briefing
 
 on:
   schedule:
-      - cron: 0 8 * * *
-        workflow_dispatch:
+- cron: '0 8 * * *'        workflow_dispatch:
 
         jobs:
           briefing:
