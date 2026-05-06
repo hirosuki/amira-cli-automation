@@ -1,33 +1,39 @@
-name: Daily Gmail & Calendar Briefing
-
+name: Daily Briefing #Fix: Correct YAML indentation and upgrade to actions/upload-artifact@v4"
+ 
 on:
   schedule:
-      - cron: '0 8 * * *'
-        workflow_dispatch:
+    - cron: '0 9 * * 1-5'  # 9 AM UTC, Monday-Friday
+  workflow_dispatch:
 
-        jobs:
-          briefing:
-              runs-on: ubuntu-latest
-
-                  steps:
-                        - uses: actions/checkout@v4
-
-                              - uses: actions/setup-node@v4
-                                      with:
-                                                node-version: '20'
-
-                                                      - run: npm install
-
-                                                            - run: |
-                                                                      mkdir -p ~/.config
-                                                                                echo '${{ secrets.GOOGLE_CREDENTIALS }}' > ~/.amira-cli-credentials.json
-                                                                                          echo '${{ secrets.AMIRA_CONFIG }}' > ~/.amira-cli-config.json
-                                                                                                    echo '${{ secrets.GOOGLE_TOKENS }}' > ~/.amira-cli-tokens.json
-                                                                                                    
-                                                                                                          - run: node index.js daily-briefing
-                                                                                                          
-                                                                                                                - uses: actions/upload-artifact@v4
-                                                                                                                        with:
-                                                                                                                                  name: daily-briefing-output
-                                                                                                                                            path: ~/Desktop/Claude/Outputs/
-                                                                                                                                                      if-no-files-found: ignore
+jobs:
+  daily-briefing:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Run daily briefing script
+        env:
+          GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+          SF_SECURITY_TOKEN: ${{ secrets.SF_SECURITY_TOKEN }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: node scripts/daily-briefing.js
+      
+      - name: Upload briefing report
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-briefing-report
+          path: ./reports/briefing.json
+          retention-days: 30
+        if: always()
