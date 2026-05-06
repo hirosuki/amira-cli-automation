@@ -23,17 +23,14 @@ jobs:
       
       - name: Run daily briefing script
         env:
-          GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
-          SF_USERNAME: ${{ secrets.SF_USERNAME }}GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-                    SF_USERNAME: ${{ secrets.SF_USERNAME }}
-                              SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
-                                        SF_SECURITY_TOKEN: ${{ secrets.SF_SECURITY_TOKEN }}
-                                                  SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
-                                                            SF_CLIENT_SECRET: ${{ secrets.SF_CLIENT_SECRET }}
-                                                                      SF_INSTANCE_URL: ${{ secrets.SF_INSTANCE_URL }}
-                                                                                SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-      - name: Upload briefing report
-        uses: actions/upload-artifact@v4
+GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+                    SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+                              SF_SECURITY_TOKEN: ${{ secrets.SF_SECURITY_TOKEN }}
+                                        SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
+                                                  SF_CLIENT_SECRET: ${{ secrets.SF_CLIENT_SECRET }}
+                                                            SF_INSTANCE_URL: ${{ secrets.SF_INSTANCE_URL }}
+                                                                      SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}uses: actions/upload-artifact@v4
         with:
           name: daily-briefing-report
           path: ./reports/briefing.json
