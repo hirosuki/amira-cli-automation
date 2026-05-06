@@ -1,26 +1,17 @@
 name: Daily Briefing
-
 on:
   schedule:
     - cron: '0 9 * * 1-5'
   workflow_dispatch:
-
 jobs:
   daily-briefing:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      
-      - name: Install dependencies
-        run: npm install
-      
+      - run: npm install
       - name: Run daily briefing script
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
@@ -32,9 +23,7 @@ jobs:
           SF_INSTANCE_URL: ${{ secrets.SF_INSTANCE_URL }}
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         run: node scripts/daily-briefing.js
-      
-      - name: Upload briefing report
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: daily-briefing-report
           path: ./reports/briefing.json
