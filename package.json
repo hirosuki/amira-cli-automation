@@ -1,16 +1,20 @@
 {
-  "name": "amira-cli",
+  "name": "amira-cli-automation",
   "version": "1.0.0",
   "description": "CLI tool for Amira Learning automation - pulls Gmail, Calendar, and Salesforce data",
   "main": "index.js",
-  "bin": {
-    "amira-cli": "index.js"
-  },
   "scripts": {
-    "start": "node index.js",
-    "daily-briefing": "node index.js daily-briefing"
+    "start": "node scripts/daily-briefing.js",
+    "daily-briefing": "node scripts/daily-briefing.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["amira", "cli", "gmail", "calendar", "salesforce"],
+  "keywords": [
+    "amira",
+    "automation",
+    "gmail",
+    "calendar",
+    "salesforce"
+  ],
   "author": "Calvin Xu",
   "license": "MIT",
   "dependencies": {
@@ -18,6 +22,7 @@
     "dotenv": "^16.3.1",
     "moment": "^2.29.4"
   },
+  "devDependencies": {},
   "engines": {
     "node": ">=22.0.0"
   }
