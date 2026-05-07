@@ -1,8 +1,7 @@
 name: Daily Briefing
 on:
   schedule:
-    - cron: '0 9 * * 1-5'
-  workflow_dispatch:
+    - cron: '45 12 * * 1-5'  # 12:45 UTC = 7:45 AM EST (Mon-Fri)  workflow_dispatch:
 jobs:
   daily-briefing:
     runs-on: ubuntu-latest
