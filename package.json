@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node scripts/daily-briefing.js",
     "daily-briefing": "node scripts/daily-briefing.js",
+    "briefing": "node scripts/gmail-calendar-briefing.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -18,8 +19,9 @@
   "author": "Calvin Xu",
   "license": "MIT",
   "dependencies": {
-    "googleapis": "^118.0.0",
+    "axios": "^1.7.0",
     "dotenv": "^16.3.1",
+    "googleapis": "^118.0.0",
     "moment": "^2.29.4"
   },
   "devDependencies": {},
