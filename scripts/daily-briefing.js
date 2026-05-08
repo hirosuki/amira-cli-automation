@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Daily Briefing Script - UPDATED VERSION
- * Pulls Gmail unread count and subjects, calendar events
+ * Daily Briefing Script
+ * Pulls Gmail unread emails, Google Calendar events, and Slack mentions
  * Generates JSON report and posts to Slack
  */
 
@@ -23,29 +23,55 @@ if (!fs.existsSync(CONFIG.reportDir)) {
 }
 
 /**
- * Load Google OAuth credentials from environment
+ * Load Google OAuth2 credentials from environment.
+ * Supports:
+ *   - OAuth2 token JSON with refresh_token (recommended for personal Gmail/Calendar)
+ *   - Service account JSON with domain-wide delegation + GOOGLE_SUBJECT_EMAIL
  */
 function getGoogleAuth() {
   try {
     const credentialsJson = process.env.GOOGLE_CREDENTIALS;
+    if (!credentialsJson) {
+      throw new Error('GOOGLE_CREDENTIALS env var is not set');
+    }
     const credentials = JSON.parse(credentialsJson);
-    if (credentials.type === 'service_account') {
+
+    if (credentials.client_id && credentials.refresh_token) {
+      // OAuth2 token (from running oauth flow locally) - recommended for personal Gmail
+      const oauth2Client = new google.auth.OAuth2(
+        credentials.client_id,
+        credentials.client_secret,
+        credentials.redirect_uri || 'urn:ietf:wg:oauth:2.0:oob'
+      );
+      oauth2Client.setCredentials({
+        refresh_token: credentials.refresh_token,
+        access_token: credentials.access_token || null,
+      });
+      return oauth2Client;
+    } else if (credentials.type === 'service_account') {
+      // Service account - requires domain-wide delegation and GOOGLE_SUBJECT_EMAIL set
+      const subject = process.env.GOOGLE_SUBJECT_EMAIL;
+      if (!subject) {
+        throw new Error(
+          'Service account detected but GOOGLE_SUBJECT_EMAIL is not set. ' +
+          'Domain-wide delegation requires a subject email. ' +
+          'Alternatively, use an OAuth2 token with refresh_token as GOOGLE_CREDENTIALS.'
+        );
+      }
       return new google.auth.GoogleAuth({
         credentials,
         scopes: [
           'https://www.googleapis.com/auth/gmail.readonly',
           'https://www.googleapis.com/auth/calendar.readonly',
         ],
+        clientOptions: { subject },
       });
-    } else if (credentials.installed) {
-      const client = new google.auth.OAuth2(
-        credentials.installed.client_id,
-        credentials.installed.client_secret,
-        credentials.installed.redirect_uris[0]
-      );
-      return client;
     } else {
-      throw new Error('Invalid credentials format');
+      throw new Error(
+        'Unrecognized GOOGLE_CREDENTIALS format. ' +
+        'Expected either an OAuth2 token JSON (with client_id + refresh_token) ' +
+        'or a service account JSON (with type: service_account).'
+      );
     }
   } catch (error) {
     console.error('❌ Error loading Google credentials:', error.message);
@@ -61,16 +87,16 @@ async function getUnreadEmails(auth) {
     const gmail = google.gmail({ version: 'v1', auth });
     const yesterday = moment().subtract(1, 'day').format('YYYY/MM/DD');
     const query = `is:unread after:${yesterday}`;
-    
+
     const res = await gmail.users.messages.list({
       userId: 'me',
       q: query,
       maxResults: 10,
     });
-    
+
     const messages = res.data.messages || [];
     const emailList = [];
-    
+
     for (const message of messages) {
       const msg = await gmail.users.messages.get({
         userId: 'me',
@@ -78,25 +104,18 @@ async function getUnreadEmails(auth) {
         format: 'metadata',
         metadataHeaders: ['Subject', 'From'],
       });
-      
+
       const headers = msg.data.payload.headers;
       const subject = headers.find(h => h.name === 'Subject')?.value || '(no subject)';
       const from = headers.find(h => h.name === 'From')?.value || '(unknown)';
-      
-      emailList.push({
-        id: message.id,
-        from,
-        subject,
-      });
+
+      emailList.push({ id: message.id, from, subject });
     }
-    
-    return {
-      count: messages.length,
-      emails: emailList,
-    };
+
+    return { count: messages.length, emails: emailList };
   } catch (error) {
     console.error('❌ Error fetching unread emails:', error.message);
-    return { count: 0, emails: [] };
+    return { count: 0, emails: [], error: error.message };
   }
 }
 
@@ -108,7 +127,7 @@ async function getTodaysEvents(auth) {
     const calendar = google.calendar({ version: 'v3', auth });
     const startOfDay = moment().startOf('day').toISOString();
     const endOfDay = moment().endOf('day').toISOString();
-    
+
     const res = await calendar.events.list({
       calendarId: 'primary',
       timeMin: startOfDay,
@@ -116,18 +135,67 @@ async function getTodaysEvents(auth) {
       singleEvents: true,
       orderBy: 'startTime',
     });
-    
+
     const events = res.data.items || [];
-    const eventList = events.map(event => ({
-      summary: event.summary,
+    return events.map(event => ({
+      summary: event.summary || '(no title)',
       start: event.start.dateTime || event.start.date,
       end: event.end.dateTime || event.end.date,
     }));
-    
-    return eventList;
   } catch (error) {
     console.error('❌ Error fetching calendar events:', error.message);
     return [];
+  }
+}
+
+/**
+ * Get Slack mentions since yesterday using the Slack Web API search.
+ * Requires env vars:
+ *   SLACK_BOT_TOKEN  - a bot/user OAuth token (xoxb-... or xoxp-...)
+ *   SLACK_USER_ID    - your Slack member ID (e.g. U01XXXXXXXX)
+ */
+async function getSlackMentions() {
+  try {
+    const token = process.env.SLACK_BOT_TOKEN;
+    const userId = process.env.SLACK_USER_ID;
+
+    if (!token) {
+      console.log('⚠️  SLACK_BOT_TOKEN not set — skipping Slack mentions');
+      return { count: 0, mentions: [], skipped: true };
+    }
+    if (!userId) {
+      console.log('⚠️  SLACK_USER_ID not set — skipping Slack mentions');
+      return { count: 0, mentions: [], skipped: true };
+    }
+
+    const query = `<@${userId}>`;
+    const searchRes = await fetch(
+      `https://slack.com/api/search.messages?query=${encodeURIComponent(query)}&count=20&sort=timestamp&sort_dir=desc`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    const searchData = await searchRes.json();
+
+    if (!searchData.ok) {
+      throw new Error(`Slack API error: ${searchData.error}`);
+    }
+
+    const yesterdayTs = moment().subtract(1, 'day').unix();
+    const matches = (searchData.messages?.matches || []).filter(
+      m => parseFloat(m.ts) >= yesterdayTs
+    );
+
+    const mentions = matches.map(m => ({
+      text: m.text.replace(/<[^>]+>/g, '').trim().substring(0, 120),
+      user: m.username || m.user || 'unknown',
+      channel: m.channel?.name || 'unknown',
+      ts: moment.unix(parseFloat(m.ts)).format('h:mm A'),
+    }));
+
+    return { count: mentions.length, mentions };
+  } catch (error) {
+    console.error('❌ Error fetching Slack mentions:', error.message);
+    return { count: 0, mentions: [], error: error.message };
   }
 }
 
@@ -141,68 +209,135 @@ async function postToSlack(briefing) {
       console.log('⚠️  Slack webhook not configured');
       return;
     }
-    
-    const message = {
-      text: '📋 Daily Briefing',
-      blocks: [
-        {
-          type: 'header',
-          text: {
-            type: 'plain_text',
-            text: '📋 Daily Briefing',
+
+    const emailCount = briefing.unreadEmails.count;
+    const eventCount = briefing.todaysEvents.length;
+    const mentionCount = briefing.slackMentions.count;
+
+    const blocks = [
+      {
+        type: 'header',
+        text: { type: 'plain_text', text: '📋 Daily Briefing' },
+      },
+      {
+        type: 'section',
+        fields: [
+          {
+            type: 'mrkdwn',
+            text: `*Generated:*
+${briefing.timestamp}`,
           },
-        },
-        {
-          type: 'section',
-          fields: [
-            {
-              type: 'mrkdwn',
-              text: `*Unread Emails:*\n${briefing.unreadEmails.count} unread since yesterday`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Generated:*\n${briefing.timestamp}`,
-            },
-          ],
-        },
-      ],
-    };
-    
-    if (briefing.unreadEmails.count > 0) {
-      let emailText = '*Recent Unread:*\n';
-      briefing.unreadEmails.emails.slice(0, 3).forEach((email, i) => {
-        emailText += `${i + 1}. ${email.subject}\n`;
-      });
-      message.blocks.push({
+          {
+            type: 'mrkdwn',
+            text: `*Summary:*
+✉️ ${emailCount} emails  📅 ${eventCount} events  💬 ${mentionCount} mentions`,
+          },
+        ],
+      },
+      { type: 'divider' },
+    ];
+
+    // --- Emails section (always shown) ---
+    if (briefing.unreadEmails.error) {
+      blocks.push({
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: emailText,
+          text: `*✉️ Unread Emails:*
+⚠️ Could not fetch — ${briefing.unreadEmails.error}`,
         },
       });
+    } else if (emailCount === 0) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: '*✉️ Unread Emails:*
+No unread emails since yesterday. 🎉' },
+      });
+    } else {
+      let emailText = `*✉️ Unread Emails (${emailCount}):*
+`;
+      briefing.unreadEmails.emails.slice(0, 5).forEach((email, i) => {
+        emailText += `${i + 1}. *${email.subject}*
+   _From: ${email.from}_
+`;
+      });
+      if (emailCount > 5) emailText += `_...and ${emailCount - 5} more_
+`;
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: emailText } });
     }
-    
-    if (briefing.todaysEvents.length > 0) {
-      let eventsText = '*Today\'s Events:*\n';
+
+    blocks.push({ type: 'divider' });
+
+    // --- Calendar section (always shown) ---
+    if (eventCount === 0) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: "*📅 Today's Calendar:*
+No events scheduled today." },
+      });
+    } else {
+      let eventsText = `*📅 Today's Calendar (${eventCount} events):*
+`;
       briefing.todaysEvents.forEach((event, i) => {
         const startTime = moment(event.start).format('h:mm A');
-        eventsText += `${i + 1}. ${event.summary} @ ${startTime}\n`;
+        const endTime = moment(event.end).format('h:mm A');
+        eventsText += `${i + 1}. *${event.summary}* — ${startTime}–${endTime}
+`;
       });
-      message.blocks.push({
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: eventsText } });
+    }
+
+    blocks.push({ type: 'divider' });
+
+    // --- Slack mentions section (always shown) ---
+    if (briefing.slackMentions.skipped) {
+      blocks.push({
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: eventsText,
+          text: '*💬 Slack Mentions:*
+⚠️ Skipped — set SLACK_BOT_TOKEN and SLACK_USER_ID secrets to enable.',
         },
       });
+    } else if (briefing.slackMentions.error) {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*💬 Slack Mentions:*
+⚠️ Could not fetch — ${briefing.slackMentions.error}`,
+        },
+      });
+    } else if (mentionCount === 0) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: '*💬 Slack Mentions:*
+No mentions since yesterday.' },
+      });
+    } else {
+      let mentionsText = `*💬 Slack Mentions (${mentionCount}):*
+`;
+      briefing.slackMentions.mentions.slice(0, 5).forEach((m, i) => {
+        mentionsText += `${i + 1}. *#${m.channel}* at ${m.ts} by @${m.user}
+   ${m.text}
+`;
+      });
+      if (mentionCount > 5) mentionsText += `_...and ${mentionCount - 5} more_
+`;
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: mentionsText } });
     }
-    
+
+    const message = {
+      text: `📋 Daily Briefing — ${briefing.timestamp}`,
+      blocks,
+    };
+
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(message),
     });
-    
+
     if (!response.ok) {
       console.error('❌ Failed to post to Slack:', response.statusText);
     } else {
@@ -219,23 +354,26 @@ async function postToSlack(briefing) {
 async function main() {
   try {
     console.log('🚀 Starting Daily Briefing...');
-    
+
     const auth = getGoogleAuth();
-    const [unreadEmails, todaysEvents] = await Promise.all([
+
+    const [unreadEmails, todaysEvents, slackMentions] = await Promise.all([
       getUnreadEmails(auth),
       getTodaysEvents(auth),
+      getSlackMentions(),
     ]);
-    
+
     const briefing = {
       timestamp: moment().format('YYYY-MM-DD HH:mm:ss'),
       unreadEmails,
       todaysEvents,
+      slackMentions,
     };
-    
+
     const reportPath = path.join(CONFIG.reportDir, CONFIG.reportFile);
     fs.writeFileSync(reportPath, JSON.stringify(briefing, null, 2));
     console.log(`✅ Report saved to ${reportPath}`);
-    
+
     await postToSlack(briefing);
     console.log('✅ Daily Briefing complete!');
   } catch (error) {
