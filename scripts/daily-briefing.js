@@ -31,13 +31,11 @@ if (!fs.existsSync(CONFIG.reportDir)) {
 function getGoogleAuth() {
   try {
     const credentialsJson = process.env.GOOGLE_CREDENTIALS;
-    if (!credentialsJson) {
-      throw new Error('GOOGLE_CREDENTIALS env var is not set');
-    }
+    if (!credentialsJson) throw new Error('GOOGLE_CREDENTIALS env var is not set');
     const credentials = JSON.parse(credentialsJson);
 
     if (credentials.client_id && credentials.refresh_token) {
-      // OAuth2 token (from running oauth flow locally) - recommended for personal Gmail
+      // OAuth2 token - recommended for personal Gmail
       const oauth2Client = new google.auth.OAuth2(
         credentials.client_id,
         credentials.client_secret,
@@ -49,14 +47,10 @@ function getGoogleAuth() {
       });
       return oauth2Client;
     } else if (credentials.type === 'service_account') {
-      // Service account - requires domain-wide delegation and GOOGLE_SUBJECT_EMAIL set
+      // Service account - requires domain-wide delegation and GOOGLE_SUBJECT_EMAIL
       const subject = process.env.GOOGLE_SUBJECT_EMAIL;
       if (!subject) {
-        throw new Error(
-          'Service account detected but GOOGLE_SUBJECT_EMAIL is not set. ' +
-          'Domain-wide delegation requires a subject email. ' +
-          'Alternatively, use an OAuth2 token with refresh_token as GOOGLE_CREDENTIALS.'
-        );
+        throw new Error('Service account requires GOOGLE_SUBJECT_EMAIL for domain-wide delegation. Use an OAuth2 token with refresh_token instead.');
       }
       return new google.auth.GoogleAuth({
         credentials,
@@ -67,11 +61,7 @@ function getGoogleAuth() {
         clientOptions: { subject },
       });
     } else {
-      throw new Error(
-        'Unrecognized GOOGLE_CREDENTIALS format. ' +
-        'Expected either an OAuth2 token JSON (with client_id + refresh_token) ' +
-        'or a service account JSON (with type: service_account).'
-      );
+      throw new Error('Unrecognized GOOGLE_CREDENTIALS format. Expected OAuth2 token JSON (with client_id + refresh_token) or service account JSON.');
     }
   } catch (error) {
     console.error('❌ Error loading Google credentials:', error.message);
@@ -104,11 +94,9 @@ async function getUnreadEmails(auth) {
         format: 'metadata',
         metadataHeaders: ['Subject', 'From'],
       });
-
       const headers = msg.data.payload.headers;
       const subject = headers.find(h => h.name === 'Subject')?.value || '(no subject)';
       const from = headers.find(h => h.name === 'From')?.value || '(unknown)';
-
       emailList.push({ id: message.id, from, subject });
     }
 
@@ -149,10 +137,8 @@ async function getTodaysEvents(auth) {
 }
 
 /**
- * Get Slack mentions since yesterday using the Slack Web API search.
- * Requires env vars:
- *   SLACK_BOT_TOKEN  - a bot/user OAuth token (xoxb-... or xoxp-...)
- *   SLACK_USER_ID    - your Slack member ID (e.g. U01XXXXXXXX)
+ * Get Slack mentions since yesterday
+ * Requires: SLACK_BOT_TOKEN (xoxb-... or xoxp-...) and SLACK_USER_ID (U...)
  */
 async function getSlackMentions() {
   try {
@@ -175,10 +161,7 @@ async function getSlackMentions() {
     );
 
     const searchData = await searchRes.json();
-
-    if (!searchData.ok) {
-      throw new Error(`Slack API error: ${searchData.error}`);
-    }
+    if (!searchData.ok) throw new Error(`Slack API error: ${searchData.error}`);
 
     const yesterdayTs = moment().subtract(1, 'day').unix();
     const matches = (searchData.messages?.matches || []).filter(
@@ -215,115 +198,77 @@ async function postToSlack(briefing) {
     const mentionCount = briefing.slackMentions.count;
 
     const blocks = [
-      {
-        type: 'header',
-        text: { type: 'plain_text', text: '📋 Daily Briefing' },
-      },
+      { type: 'header', text: { type: 'plain_text', text: '📋 Daily Briefing' } },
       {
         type: 'section',
         fields: [
-          {
-            type: 'mrkdwn',
-            text: `*Generated:*
-${briefing.timestamp}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*Summary:*
-✉️ ${emailCount} emails  📅 ${eventCount} events  💬 ${mentionCount} mentions`,
-          },
+          { type: 'mrkdwn', text: `*Generated:*\n${briefing.timestamp}` },
+          { type: 'mrkdwn', text: `*Summary:*\n✉️ ${emailCount} emails  📅 ${eventCount} events  💬 ${mentionCount} mentions` },
         ],
       },
       { type: 'divider' },
     ];
 
-    // --- Emails section (always shown) ---
+    // Emails section
     if (briefing.unreadEmails.error) {
       blocks.push({
         type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*✉️ Unread Emails:*
-⚠️ Could not fetch — ${briefing.unreadEmails.error}`,
-        },
+        text: { type: 'mrkdwn', text: `*✉️ Unread Emails:*\n⚠️ Could not fetch — ${briefing.unreadEmails.error}` },
       });
     } else if (emailCount === 0) {
       blocks.push({
         type: 'section',
-        text: { type: 'mrkdwn', text: '*✉️ Unread Emails:*
-No unread emails since yesterday. 🎉' },
+        text: { type: 'mrkdwn', text: '*✉️ Unread Emails:*\nNo unread emails since yesterday. 🎉' },
       });
     } else {
-      let emailText = `*✉️ Unread Emails (${emailCount}):*
-`;
+      let emailText = `*✉️ Unread Emails (${emailCount}):*\n`;
       briefing.unreadEmails.emails.slice(0, 5).forEach((email, i) => {
-        emailText += `${i + 1}. *${email.subject}*
-   _From: ${email.from}_
-`;
+        emailText += `${i + 1}. *${email.subject}*\n   _From: ${email.from}_\n`;
       });
-      if (emailCount > 5) emailText += `_...and ${emailCount - 5} more_
-`;
+      if (emailCount > 5) emailText += `_...and ${emailCount - 5} more_\n`;
       blocks.push({ type: 'section', text: { type: 'mrkdwn', text: emailText } });
     }
-
     blocks.push({ type: 'divider' });
 
-    // --- Calendar section (always shown) ---
+    // Calendar section
     if (eventCount === 0) {
       blocks.push({
         type: 'section',
-        text: { type: 'mrkdwn', text: "*📅 Today's Calendar:*
-No events scheduled today." },
+        text: { type: 'mrkdwn', text: "*📅 Today's Calendar:*\nNo events scheduled today." },
       });
     } else {
-      let eventsText = `*📅 Today's Calendar (${eventCount} events):*
-`;
+      let eventsText = `*📅 Today's Calendar (${eventCount} events):*\n`;
       briefing.todaysEvents.forEach((event, i) => {
         const startTime = moment(event.start).format('h:mm A');
         const endTime = moment(event.end).format('h:mm A');
-        eventsText += `${i + 1}. *${event.summary}* — ${startTime}–${endTime}
-`;
+        eventsText += `${i + 1}. *${event.summary}* — ${startTime}–${endTime}\n`;
       });
       blocks.push({ type: 'section', text: { type: 'mrkdwn', text: eventsText } });
     }
-
     blocks.push({ type: 'divider' });
 
-    // --- Slack mentions section (always shown) ---
+    // Slack mentions section
     if (briefing.slackMentions.skipped) {
       blocks.push({
         type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: '*💬 Slack Mentions:*
-⚠️ Skipped — set SLACK_BOT_TOKEN and SLACK_USER_ID secrets to enable.',
-        },
+        text: { type: 'mrkdwn', text: '*💬 Slack Mentions:*\n⚠️ Skipped — set SLACK_BOT_TOKEN and SLACK_USER_ID secrets to enable.' },
       });
     } else if (briefing.slackMentions.error) {
       blocks.push({
         type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*💬 Slack Mentions:*
-⚠️ Could not fetch — ${briefing.slackMentions.error}`,
-        },
+        text: { type: 'mrkdwn', text: `*💬 Slack Mentions:*\n⚠️ Could not fetch — ${briefing.slackMentions.error}` },
       });
     } else if (mentionCount === 0) {
       blocks.push({
         type: 'section',
-        text: { type: 'mrkdwn', text: '*💬 Slack Mentions:*
-No mentions since yesterday.' },
+        text: { type: 'mrkdwn', text: '*💬 Slack Mentions:*\nNo mentions since yesterday.' },
       });
     } else {
-      let mentionsText = `*💬 Slack Mentions (${mentionCount}):*
-`;
+      let mentionsText = `*💬 Slack Mentions (${mentionCount}):*\n`;
       briefing.slackMentions.mentions.slice(0, 5).forEach((m, i) => {
-        mentionsText += `${i + 1}. *#${m.channel}* at ${m.ts} by @${m.user}
-   ${m.text}
-`;
+        mentionsText += `${i + 1}. *#${m.channel}* at ${m.ts} by @${m.user}\n   ${m.text}\n`;
       });
-      if (mentionCount > 5) mentionsText += `_...and ${mentionCount - 5} more_
-`;
+      if (mentionCount > 5) mentionsText += `_...and ${mentionCount - 5} more_\n`;
       blocks.push({ type: 'section', text: { type: 'mrkdwn', text: mentionsText } });
     }
 
