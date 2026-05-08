@@ -2,7 +2,7 @@
 
 /**
  * Daily Briefing Script
- * Pulls Gmail unread count, Calendar events, and Salesforce cases
+ * Pulls Gmail unread emails, Google Calendar events, and Slack mentions
  * Generates JSON report and posts to Slack
  */
 
@@ -23,54 +23,87 @@ if (!fs.existsSync(CONFIG.reportDir)) {
 }
 
 /**
- * Load Google OAuth credentials from environment
+ * Load Google OAuth2 credentials from environment.
+ * Supports:
+ *   - OAuth2 token JSON with refresh_token (recommended for personal Gmail/Calendar)
+ *   - Service account JSON with domain-wide delegation + GOOGLE_SUBJECT_EMAIL
  */
 function getGoogleAuth() {
   try {
     const credentialsJson = process.env.GOOGLE_CREDENTIALS;
-    if (!credentialsJson) {
-      throw new Error('GOOGLE_CREDENTIALS environment variable not set');
-    }
-
+    if (!credentialsJson) throw new Error('GOOGLE_CREDENTIALS env var is not set');
     const credentials = JSON.parse(credentialsJson);
-    
-    // Handle both service account and OAuth credentials
-    if (credentials.type === 'service_account') {
+
+    if (credentials.client_id && credentials.refresh_token) {
+      // OAuth2 token - recommended for personal Gmail
+      const oauth2Client = new google.auth.OAuth2(
+        credentials.client_id,
+        credentials.client_secret,
+        credentials.redirect_uri || 'urn:ietf:wg:oauth:2.0:oob'
+      );
+      oauth2Client.setCredentials({
+        refresh_token: credentials.refresh_token,
+        access_token: credentials.access_token || null,
+      });
+      return oauth2Client;
+    } else if (credentials.type === 'service_account') {
+      // Service account - requires domain-wide delegation and GOOGLE_SUBJECT_EMAIL
+      const subject = process.env.GOOGLE_SUBJECT_EMAIL;
+      if (!subject) {
+        throw new Error('Service account requires GOOGLE_SUBJECT_EMAIL for domain-wide delegation. Use an OAuth2 token with refresh_token instead.');
+      }
       return new google.auth.GoogleAuth({
         credentials,
         scopes: [
           'https://www.googleapis.com/auth/gmail.readonly',
           'https://www.googleapis.com/auth/calendar.readonly',
         ],
+        clientOptions: { subject },
       });
-    } else if (credentials.installed) {
-      // OAuth credentials
-      const { client_id, client_secret, redirect_uris } = credentials.installed;
-      return new google.auth.OAuth2(client_id, client_secret, redirect_uris?.[0]);
     } else {
-      throw new Error('Invalid credentials format');
+      throw new Error('Unrecognized GOOGLE_CREDENTIALS format. Expected OAuth2 token JSON (with client_id + refresh_token) or service account JSON.');
     }
   } catch (error) {
     console.error('❌ Error loading Google credentials:', error.message);
-    throw error;
+    process.exit(1);
   }
 }
 
 /**
- * Get unread email count from Gmail
+ * Get unread emails since yesterday
  */
 async function getUnreadEmails(auth) {
   try {
     const gmail = google.gmail({ version: 'v1', auth });
-    const response = await gmail.users.messages.list({
+    const yesterday = moment().subtract(1, 'day').format('YYYY/MM/DD');
+    const query = `is:unread after:${yesterday}`;
+
+    const res = await gmail.users.messages.list({
       userId: 'me',
-      q: 'is:unread',
-      maxResults: 1,
+      q: query,
+      maxResults: 10,
     });
-    return response.data.resultSizeEstimate || 0;
+
+    const messages = res.data.messages || [];
+    const emailList = [];
+
+    for (const message of messages) {
+      const msg = await gmail.users.messages.get({
+        userId: 'me',
+        id: message.id,
+        format: 'metadata',
+        metadataHeaders: ['Subject', 'From'],
+      });
+      const headers = msg.data.payload.headers;
+      const subject = headers.find(h => h.name === 'Subject')?.value || '(no subject)';
+      const from = headers.find(h => h.name === 'From')?.value || '(unknown)';
+      emailList.push({ id: message.id, from, subject });
+    }
+
+    return { count: messages.length, emails: emailList };
   } catch (error) {
-    console.error('⚠️  Error fetching Gmail data:', error.message);
-    return 0;
+    console.error('❌ Error fetching unread emails:', error.message);
+    return { count: 0, emails: [], error: error.message };
   }
 }
 
@@ -80,96 +113,72 @@ async function getUnreadEmails(auth) {
 async function getTodaysEvents(auth) {
   try {
     const calendar = google.calendar({ version: 'v3', auth });
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const startOfDay = moment().startOf('day').toISOString();
+    const endOfDay = moment().endOf('day').toISOString();
 
-    const response = await calendar.events.list({
+    const res = await calendar.events.list({
       calendarId: 'primary',
-      timeMin: startOfDay.toISOString(),
-      timeMax: endOfDay.toISOString(),
+      timeMin: startOfDay,
+      timeMax: endOfDay,
       singleEvents: true,
       orderBy: 'startTime',
     });
 
-    return response.data.items || [];
+    const events = res.data.items || [];
+    return events.map(event => ({
+      summary: event.summary || '(no title)',
+      start: event.start.dateTime || event.start.date,
+      end: event.end.dateTime || event.end.date,
+    }));
   } catch (error) {
-    console.error('⚠️  Error fetching Calendar data:', error.message);
+    console.error('❌ Error fetching calendar events:', error.message);
     return [];
   }
 }
 
 /**
- * Get open Salesforce cases via REST API
+ * Get Slack mentions since yesterday
+ * Requires: SLACK_BOT_TOKEN (xoxb-... or xoxp-...) and SLACK_USER_ID (U...)
  */
-async function getSalesforceData() {
+async function getSlackMentions() {
   try {
-    const sfUsername = process.env.SF_USERNAME;
-    const sfPassword = process.env.SF_PASSWORD;
-    const sfSecurityToken = process.env.SF_SECURITY_TOKEN;
+    const token = process.env.SLACK_BOT_TOKEN;
+    const userId = process.env.SLACK_USER_ID;
 
-    if (!sfUsername || !sfPassword) {
-      console.warn('⚠️  Salesforce credentials not configured, skipping SF data');
-      return { openCases: 0, casesList: [] };
+    if (!token) {
+      console.log('⚠️  SLACK_BOT_TOKEN not set — skipping Slack mentions');
+      return { count: 0, mentions: [], skipped: true };
+    }
+    if (!userId) {
+      console.log('⚠️  SLACK_USER_ID not set — skipping Slack mentions');
+      return { count: 0, mentions: [], skipped: true };
     }
 
-    // Authenticate with Salesforce
-    const authUrl = 'https://login.salesforce.com/services/oauth2/token';
-    const authBody = new URLSearchParams({
-      grant_type: 'password',
-      client_id: process.env.SF_CLIENT_ID || '',
-      client_secret: process.env.SF_CLIENT_SECRET || '',
-      username: sfUsername,
-      password: sfPassword + sfSecurityToken,
-    });
-
-    const authResponse = await fetch(authUrl, {
-      method: 'POST',
-      body: authBody,
-    });
-
-    if (!authResponse.ok) {
-      console.warn('⚠️  Salesforce authentication failed');
-      return { openCases: 0, casesList: [] };
-    }
-
-    const { access_token } = await authResponse.json();
-
-    // Query open cases
-    const instanceUrl = process.env.SF_INSTANCE_URL || 'https://amira.my.salesforce.com';
-    const query = encodeURIComponent(
-      "SELECT Id, CaseNumber, Subject, Status, Priority, CreatedDate FROM Case WHERE Status != 'Closed' ORDER BY CreatedDate DESC LIMIT 10"
+    const query = `<@${userId}>`;
+    const searchRes = await fetch(
+      `https://slack.com/api/search.messages?query=${encodeURIComponent(query)}&count=20&sort=timestamp&sort_dir=desc`,
+      { headers: { Authorization: `Bearer ${token}` } }
     );
 
-    const casesResponse = await fetch(
-      `${instanceUrl}/services/data/v59.0/query?q=${query}`,
-      {
-        headers: {
-          Authorization: `Bearer ${access_token}`,
-        },
-      }
+    const searchData = await searchRes.json();
+    if (!searchData.ok) throw new Error(`Slack API error: ${searchData.error}`);
+
+    const yesterdayTs = moment().subtract(1, 'day').unix();
+    const matches = (searchData.messages?.matches || []).filter(
+      m => parseFloat(m.ts) >= yesterdayTs
     );
 
-    if (!casesResponse.ok) {
-      console.warn('⚠️  Failed to query Salesforce cases');
-      return { openCases: 0, casesList: [] };
-    }
+    const mentions = matches.map(m => ({
+      text: m.text.replace(/<[^>]+>/g, '').trim().substring(0, 120),
+      user: m.username || m.user || 'unknown',
+      channel: m.channel?.name || 'unknown',
+      ts: moment.unix(parseFloat(m.ts)).format('h:mm A'),
+    }));
 
-    const { records } = await casesResponse.json();
-    return {
-      openCases: records.length,
-      casesList: records.map((c) => ({
-        id: c.Id,
-        number: c.CaseNumber,
-        subject: c.Subject,
-        status: c.Status,
-        priority: c.Priority,
-        createdDate: c.CreatedDate,
-      })),
-    };
+    return { count: mentions.length, mentions };
   } catch (error) {
-    console.error('⚠️  Error fetching Salesforce data:', error.message);
-    return { openCases: 0, casesList: [] };
+    console.error('❌ Error fetching Slack mentions:', error.message);
+    return { count: 0, mentions: [], error: error.message };
   }
 }
 
@@ -180,56 +189,93 @@ async function postToSlack(briefing) {
   try {
     const webhookUrl = process.env.SLACK_WEBHOOK;
     if (!webhookUrl) {
-      console.log('ℹ️  Slack webhook not configured, skipping Slack post');
+      console.log('⚠️  Slack webhook not configured');
       return;
     }
 
-    const message = {
-      text: '📋 Daily Briefing',
-      blocks: [
-        {
-          type: 'header',
-          text: {
-            type: 'plain_text',
-            text: '📋 Daily Briefing',
-          },
-        },
-        {
-          type: 'section',
-          fields: [
-            {
-              type: 'mrkdwn',
-              text: `*Unread Emails:*\n${briefing.unreadEmails}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Today's Events:*\n${briefing.todaysEvents}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Open SF Cases:*\n${briefing.openCases}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Generated:*\n${briefing.timestamp}`,
-            },
-          ],
-        },
-      ],
-    };
+    const emailCount = briefing.unreadEmails.count;
+    const eventCount = briefing.todaysEvents.length;
+    const mentionCount = briefing.slackMentions.count;
 
-    if (briefing.eventsList.length > 0) {
-      message.blocks.push({
+    const blocks = [
+      { type: 'header', text: { type: 'plain_text', text: '📋 Daily Briefing' } },
+      {
         type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*📅 Upcoming Events:*\n${briefing.eventsList
-            .slice(0, 5)
-            .map((e) => `• ${e.title} @ ${moment(e.time).format('h:mm A')}`)
-            .join('\n')}`,
-        },
+        fields: [
+          { type: 'mrkdwn', text: `*Generated:*\n${briefing.timestamp}` },
+          { type: 'mrkdwn', text: `*Summary:*\n✉️ ${emailCount} emails  📅 ${eventCount} events  💬 ${mentionCount} mentions` },
+        ],
+      },
+      { type: 'divider' },
+    ];
+
+    // Emails section
+    if (briefing.unreadEmails.error) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*✉️ Unread Emails:*\n⚠️ Could not fetch — ${briefing.unreadEmails.error}` },
       });
+    } else if (emailCount === 0) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: '*✉️ Unread Emails:*\nNo unread emails since yesterday. 🎉' },
+      });
+    } else {
+      let emailText = `*✉️ Unread Emails (${emailCount}):*\n`;
+      briefing.unreadEmails.emails.slice(0, 5).forEach((email, i) => {
+        emailText += `${i + 1}. *${email.subject}*\n   _From: ${email.from}_\n`;
+      });
+      if (emailCount > 5) emailText += `_...and ${emailCount - 5} more_\n`;
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: emailText } });
     }
+    blocks.push({ type: 'divider' });
+
+    // Calendar section
+    if (eventCount === 0) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: "*📅 Today's Calendar:*\nNo events scheduled today." },
+      });
+    } else {
+      let eventsText = `*📅 Today's Calendar (${eventCount} events):*\n`;
+      briefing.todaysEvents.forEach((event, i) => {
+        const startTime = moment(event.start).format('h:mm A');
+        const endTime = moment(event.end).format('h:mm A');
+        eventsText += `${i + 1}. *${event.summary}* — ${startTime}–${endTime}\n`;
+      });
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: eventsText } });
+    }
+    blocks.push({ type: 'divider' });
+
+    // Slack mentions section
+    if (briefing.slackMentions.skipped) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: '*💬 Slack Mentions:*\n⚠️ Skipped — set SLACK_BOT_TOKEN and SLACK_USER_ID secrets to enable.' },
+      });
+    } else if (briefing.slackMentions.error) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*💬 Slack Mentions:*\n⚠️ Could not fetch — ${briefing.slackMentions.error}` },
+      });
+    } else if (mentionCount === 0) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: '*💬 Slack Mentions:*\nNo mentions since yesterday.' },
+      });
+    } else {
+      let mentionsText = `*💬 Slack Mentions (${mentionCount}):*\n`;
+      briefing.slackMentions.mentions.slice(0, 5).forEach((m, i) => {
+        mentionsText += `${i + 1}. *#${m.channel}* at ${m.ts} by @${m.user}\n   ${m.text}\n`;
+      });
+      if (mentionCount > 5) mentionsText += `_...and ${mentionCount - 5} more_\n`;
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: mentionsText } });
+    }
+
+    const message = {
+      text: `📋 Daily Briefing — ${briefing.timestamp}`,
+      blocks,
+    };
 
     const response = await fetch(webhookUrl, {
       method: 'POST',
@@ -238,12 +284,12 @@ async function postToSlack(briefing) {
     });
 
     if (!response.ok) {
-      console.warn('⚠️  Failed to post to Slack');
+      console.error('❌ Failed to post to Slack:', response.statusText);
     } else {
-      console.log('✅ Posted briefing to Slack');
+      console.log('✅ Posted to Slack successfully');
     }
   } catch (error) {
-    console.error('⚠️  Error posting to Slack:', error.message);
+    console.error('❌ Error posting to Slack:', error.message);
   }
 }
 
@@ -254,55 +300,31 @@ async function main() {
   try {
     console.log('🚀 Starting Daily Briefing...');
 
-    // Get Google Auth
     const auth = getGoogleAuth();
 
-    // Fetch data in parallel
-    console.log('📧 Fetching Gmail data...');
-    console.log('📅 Fetching Calendar data...');
-    console.log('🔧 Fetching Salesforce data...');
-
-    const [unreadEmails, events, sfData] = await Promise.all([
+    const [unreadEmails, todaysEvents, slackMentions] = await Promise.all([
       getUnreadEmails(auth),
       getTodaysEvents(auth),
-      getSalesforceData(),
+      getSlackMentions(),
     ]);
 
-    // Build briefing report
     const briefing = {
-      timestamp: moment().format('MM-DD-YYYY HH:mm:ss'),
+      timestamp: moment().format('YYYY-MM-DD HH:mm:ss'),
       unreadEmails,
-      todaysEvents: events.length,
-      openCases: sfData.openCases,
-      eventsList: events.map((event) => ({
-        title: event.summary || '(No title)',
-        time: event.start.dateTime || event.start.date,
-        duration: event.summary ? '1h' : null,
-      })),
-      casesList: sfData.casesList,
+      todaysEvents,
+      slackMentions,
     };
 
-    // Save report
     const reportPath = path.join(CONFIG.reportDir, CONFIG.reportFile);
     fs.writeFileSync(reportPath, JSON.stringify(briefing, null, 2));
     console.log(`✅ Report saved to ${reportPath}`);
 
-    // Post to Slack
     await postToSlack(briefing);
-
-    // Output summary
-    console.log('\n📊 Daily Briefing Summary:');
-    console.log(`   Unread Emails: ${briefing.unreadEmails}`);
-    console.log(`   Today's Events: ${briefing.todaysEvents}`);
-    console.log(`   Open Salesforce Cases: ${briefing.openCases}`);
-    console.log(`   Generated: ${briefing.timestamp}\n`);
-
-    process.exit(0);
+    console.log('✅ Daily Briefing complete!');
   } catch (error) {
-    console.error('❌ Fatal error:', error);
+    console.error('❌ Fatal error:', error.message);
     process.exit(1);
   }
 }
 
-// Run the script
 main();

@@ -1,0 +1,36 @@
+name: Gmail & Calendar Briefing
+
+on:
+  schedule:
+    - cron: '45 14 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  briefing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Gmail and Calendar Briefing
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_USER_ID: ${{ secrets.SLACK_USER_ID }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: node scripts/gmail-calendar-briefing.js
+
+      - name: Upload briefing report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: briefing-report
+          path: ./reports/briefing.json
+          retention-days: 30
