@@ -33,8 +33,22 @@ function getGoogleAuth() {
       throw new Error('GOOGLE_CREDENTIALS environment variable is not set');
     }
 
-    // Trim whitespace
+    // Diagnostic: show first few char codes (safe - doesn't reveal secret content)
+    const firstChars = [...credentialsJson.slice(0, 5)].map(c => c.charCodeAt(0));
+    console.log(`ℹ️  GOOGLE_CREDENTIALS first char codes: [${firstChars.join(', ')}]`);
+
+    // Trim whitespace and BOM characters
     credentialsJson = credentialsJson.trim();
+    // Strip UTF-8 BOM (\uFEFF) and other invisible leading chars
+    credentialsJson = credentialsJson.replace(/^\uFEFF/, '');
+    credentialsJson = credentialsJson.replace(/^[\u200B\u200C\u200D\uFEFF]+/, '');
+
+    // Find the actual JSON start (first { or [)
+    const jsonStart = credentialsJson.search(/[{[]/);
+    if (jsonStart > 0) {
+      console.log(`ℹ️  Stripping ${jsonStart} leading character(s) before JSON`);
+      credentialsJson = credentialsJson.slice(jsonStart);
+    }
 
     // Try base64 decode first if it doesn't start with {
     if (!credentialsJson.startsWith('{')) {
