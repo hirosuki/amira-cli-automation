@@ -28,29 +28,69 @@ if (!fs.existsSync(REPORT_DIR)) {
 
 function getGoogleAuth() {
   try {
-    const credentialsJson = process.env.GOOGLE_CREDENTIALS;
+    let credentialsJson = process.env.GOOGLE_CREDENTIALS;
     if (!credentialsJson) {
       throw new Error('GOOGLE_CREDENTIALS environment variable is not set');
     }
 
+    // Trim whitespace
+    credentialsJson = credentialsJson.trim();
+
+    // Try base64 decode first if it doesn't start with {
+    if (!credentialsJson.startsWith('{')) {
+      try {
+        const decoded = Buffer.from(credentialsJson, 'base64').toString('utf8').trim();
+        if (decoded.startsWith('{')) {
+          credentialsJson = decoded;
+          console.log('ℹ️  Decoded base64 GOOGLE_CREDENTIALS');
+        }
+      } catch (_) {}
+    }
+
+    // Strip surrounding quotes if present (e.g. stored as '"{ ... }"')
+    if ((credentialsJson.startsWith('"') && credentialsJson.endsWith('"')) ||
+        (credentialsJson.startsWith("'") && credentialsJson.endsWith("'"))) {
+      credentialsJson = credentialsJson.slice(1, -1);
+    }
+
     const credentials = JSON.parse(credentialsJson);
-    
-    // OAuth2 token format
-    if (credentials.client_id && credentials.refresh_token) {
+
+    // Handle nested "installed" or "web" wrapper (downloaded OAuth client JSON)
+    const creds = credentials.installed || credentials.web || credentials;
+
+    // If we have client_id + refresh_token: standard OAuth2 token
+    if (creds.client_id && creds.refresh_token) {
       const oauth2Client = new google.auth.OAuth2(
-        credentials.client_id,
-        credentials.client_secret,
-        credentials.redirect_uris?.[0] || 'urn:ietf:wg:oauth:2.0:oob'
+        creds.client_id,
+        creds.client_secret,
+        creds.redirect_uris?.[0] || 'urn:ietf:wg:oauth:2.0:oob'
       );
-      
-      oauth2Client.setCredentials({
-        refresh_token: credentials.refresh_token,
-      });
-      
+      oauth2Client.setCredentials({ refresh_token: creds.refresh_token });
       return oauth2Client;
     }
-    
-    throw new Error('Invalid GOOGLE_CREDENTIALS format. Expected OAuth2 token with client_id and refresh_token.');
+
+    // If we only have client_id (OAuth client JSON without tokens) - needs refresh_token
+    if (creds.client_id && !creds.refresh_token) {
+      throw new Error(
+        'GOOGLE_CREDENTIALS has client_id but no refresh_token. ' +
+        'Please add your refresh_token to the secret. See SETUP_GUIDE.md for instructions.'
+      );
+    }
+
+    // Service account format
+    if (credentials.type === 'service_account') {
+      return new google.auth.GoogleAuth({
+        credentials,
+        scopes: [
+          'https://www.googleapis.com/auth/gmail.readonly',
+          'https://www.googleapis.com/auth/calendar.readonly',
+        ],
+      });
+    }
+
+    throw new Error(
+      'Unrecognized GOOGLE_CREDENTIALS format. Expected OAuth2 JSON with client_id + refresh_token.'
+    );
   } catch (error) {
     console.error('❌ Google Auth Error:', error.message);
     throw error;
