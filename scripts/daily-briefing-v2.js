@@ -39,29 +39,37 @@ function getGoogleAuth() {
 
     // Trim whitespace and BOM characters
     credentialsJson = credentialsJson.trim();
-    // Strip UTF-8 BOM (\uFEFF) and other invisible leading chars
     credentialsJson = credentialsJson.replace(/^\uFEFF/, '');
     credentialsJson = credentialsJson.replace(/^[\u200B\u200C\u200D\uFEFF]+/, '');
 
-    // Find the actual JSON start (first { or [)
+    // --- SCENARIO A: raw refresh token (starts with digits/letters, not JSON) ---
+    // char code 123 = '{' — if it doesn't start with {, treat as raw refresh token
+    if (credentialsJson.charCodeAt(0) !== 123) {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+      if (!clientId || !clientSecret) {
+        throw new Error(
+          'GOOGLE_CREDENTIALS appears to be a raw refresh token, but GOOGLE_CLIENT_ID ' +
+          'and GOOGLE_CLIENT_SECRET secrets are missing. Please add them to GitHub Secrets.'
+        );
+      }
+
+      console.log('ℹ️  Using raw refresh token + GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET');
+      const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, 'urn:ietf:wg:oauth:2.0:oob');
+      oauth2Client.setCredentials({ refresh_token: credentialsJson });
+      return oauth2Client;
+    }
+
+    // --- SCENARIO B: JSON format ---
+    // Find the actual JSON start (strip any leading non-JSON chars)
     const jsonStart = credentialsJson.search(/[{[]/);
     if (jsonStart > 0) {
       console.log(`ℹ️  Stripping ${jsonStart} leading character(s) before JSON`);
       credentialsJson = credentialsJson.slice(jsonStart);
     }
 
-    // Try base64 decode first if it doesn't start with {
-    if (!credentialsJson.startsWith('{')) {
-      try {
-        const decoded = Buffer.from(credentialsJson, 'base64').toString('utf8').trim();
-        if (decoded.startsWith('{')) {
-          credentialsJson = decoded;
-          console.log('ℹ️  Decoded base64 GOOGLE_CREDENTIALS');
-        }
-      } catch (_) {}
-    }
-
-    // Strip surrounding quotes if present (e.g. stored as '"{ ... }"')
+    // Strip surrounding quotes if present
     if ((credentialsJson.startsWith('"') && credentialsJson.endsWith('"')) ||
         (credentialsJson.startsWith("'") && credentialsJson.endsWith("'"))) {
       credentialsJson = credentialsJson.slice(1, -1);
@@ -69,10 +77,9 @@ function getGoogleAuth() {
 
     const credentials = JSON.parse(credentialsJson);
 
-    // Handle nested "installed" or "web" wrapper (downloaded OAuth client JSON)
+    // Handle nested "installed" or "web" wrapper
     const creds = credentials.installed || credentials.web || credentials;
 
-    // If we have client_id + refresh_token: standard OAuth2 token
     if (creds.client_id && creds.refresh_token) {
       const oauth2Client = new google.auth.OAuth2(
         creds.client_id,
@@ -83,15 +90,13 @@ function getGoogleAuth() {
       return oauth2Client;
     }
 
-    // If we only have client_id (OAuth client JSON without tokens) - needs refresh_token
     if (creds.client_id && !creds.refresh_token) {
       throw new Error(
-        'GOOGLE_CREDENTIALS has client_id but no refresh_token. ' +
-        'Please add your refresh_token to the secret. See SETUP_GUIDE.md for instructions.'
+        'GOOGLE_CREDENTIALS JSON has client_id but no refresh_token. ' +
+        'Please add your refresh_token to the secret.'
       );
     }
 
-    // Service account format
     if (credentials.type === 'service_account') {
       return new google.auth.GoogleAuth({
         credentials,
@@ -102,9 +107,7 @@ function getGoogleAuth() {
       });
     }
 
-    throw new Error(
-      'Unrecognized GOOGLE_CREDENTIALS format. Expected OAuth2 JSON with client_id + refresh_token.'
-    );
+    throw new Error('Unrecognized GOOGLE_CREDENTIALS format.');
   } catch (error) {
     console.error('❌ Google Auth Error:', error.message);
     throw error;
