@@ -23,7 +23,7 @@ jobs:
       
       - name: Run daily briefing script
         env:
-       GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL: daily-briefing
         run: node scripts/daily-briefing-v2.js
