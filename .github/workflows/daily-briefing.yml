@@ -27,8 +27,22 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL: daily-briefing
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
         run: node scripts/daily-briefing-v2.js
+
+      - name: Post briefing to Slack
+        if: always()
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+          slack-message: |
+            📊 Daily Briefing Report
+            <@${{ secrets.SLACK_USER_ID }}>
+            
+            Check the job summary for details.
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       
       - name: Upload briefing report
         uses: actions/upload-artifact@v4
