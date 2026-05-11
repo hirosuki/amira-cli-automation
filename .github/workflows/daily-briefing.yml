@@ -28,7 +28,7 @@ jobs:
           SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
           SF_SECURITY_TOKEN: ${{ secrets.SF_SECURITY_TOKEN }}
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-        run: node scripts/daily-briefing.js
+        run: node scripts/daily-briefing-v2.js
       
       - name: Upload briefing report
         uses: actions/upload-artifact@v4
