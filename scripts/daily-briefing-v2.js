@@ -216,7 +216,7 @@ async function fetchTodaysEvents(auth) {
 
 async function fetchSlackMentions() {
   try {
-    const token = process.env.SLACK_BOT_TOKEN;
+    const token = process.env.SLACK_USER_TOKEN;
     const userId = process.env.SLACK_USER_ID;
     
     if (!token || !userId) {
