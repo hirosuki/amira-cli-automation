@@ -193,13 +193,13 @@ async function fetchTodaysEvents(auth) {
           hour: '2-digit', 
           minute: '2-digit',
           hour12: true 
-          timezone: 'America/Chicago'
+          timeZone: 'America/Chicago'
         }) : 'All day',
         end: end ? new Date(end).toLocaleTimeString('en-US', { 
           hour: '2-digit', 
           minute: '2-digit',
           hour12: true 
-          timezone: 'America/Chicago'
+          timeZone: 'America/Chicago'
         }) : '',
       };
     });
@@ -475,7 +475,7 @@ async function main() {
     // Build briefing object
     const briefing = {
       timestamp: new Date().toISOString(),
-      generated_at: new Date().toLocaleString('en-US', { timezone: TIMEZONE }),
+      generated_at: new Date().toLocaleString('en-US', { timeZone: TIMEZONE }),
       gmail,
       calendar,
       slack,
