@@ -193,11 +193,13 @@ async function fetchTodaysEvents(auth) {
           hour: '2-digit', 
           minute: '2-digit',
           hour12: true 
+          timezone: 'America/Chicago'
         }) : 'All day',
         end: end ? new Date(end).toLocaleTimeString('en-US', { 
           hour: '2-digit', 
           minute: '2-digit',
           hour12: true 
+          timezone: 'America/Chicago'
         }) : '',
       };
     });
