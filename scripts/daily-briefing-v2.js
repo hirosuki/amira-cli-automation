@@ -475,7 +475,7 @@ async function main() {
     // Build briefing object
     const briefing = {
       timestamp: new Date().toISOString(),
-      generated_at: new Date().toLocaleString('en-US', { timeZone: TIMEZONE }),
+      generated_at: new Date().toLocaleString('en-US', { timezone: TIMEZONE }),
       gmail,
       calendar,
       slack,
