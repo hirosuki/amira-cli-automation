@@ -29,7 +29,7 @@ jobs:
           SLACK_USER_TOKEN: ${{ secrets.SLACK_USER_TOKEN }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: node scripts/daily-briefing-v2.js
+        run: node scripts/daily-briefing.js
       
       - uses: actions/upload-artifact@v4
         if: always()
