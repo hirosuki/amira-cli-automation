@@ -13,9 +13,20 @@ on:
 jobs:
   impersonate-and-check:
     runs-on: ubuntu-latest
-    outputs:
-      impersonation_url: ${{ steps.extract-url.outputs.url }}
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm install playwright
+          npx playwright install chromium --with-deps
+
       - name: Determine district name
         id: get-district
         run: |
@@ -25,70 +36,140 @@ jobs:
             DISTRICT="${{ github.event.client_payload.district_name }}"
           fi
           echo "district=$DISTRICT" >> $GITHUB_OUTPUT
-          echo "District: $DISTRICT"
+          echo "✅ District: $DISTRICT"
 
-      - name: Post impersonate command to Slack
-        id: post-command
+      - name: Create Playwright script
         run: |
-          RESPONSE=$(curl -X POST https://amiralearning.slack.com/api/chat.postMessage \
-            -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "channel": "C099HJNDW59",
-              "text": "/impersonate-district ${{ steps.get-district.outputs.district }}"
-            }')
-          
-          echo "Response: $RESPONSE"
-          TS=$(echo "$RESPONSE" | grep -o '"ts":"[^"]*' | cut -d'"' -f4)
-          echo "message_ts=$TS" >> $GITHUB_OUTPUT
-          echo "Posted message timestamp: $TS"
+          cat > impersonate.js << 'SCRIPT'
+          const { chromium } = require('playwright');
+          const fs = require('fs');
 
-      - name: Wait for bot response
-        run: sleep 3
+          async function main() {
+            const districtName = process.env.DISTRICT_NAME;
+            const sessionCookie = process.env.SLACK_SESSION_COOKIE;
 
-      - name: Fetch thread replies
-        id: fetch-thread
-        run: |
-          THREAD_RESPONSE=$(curl -X GET "https://amiralearning.slack.com/api/conversations.replies" \
-            -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
-            -d "channel=C099HJNDW59&ts=${{ steps.post-command.outputs.message_ts }}")
-          
-          echo "Thread Response: $THREAD_RESPONSE"
-          echo "thread_json=$THREAD_RESPONSE" >> $GITHUB_OUTPUT
+            console.log(`🏫 Running for district: ${districtName}`);
 
-      - name: Extract impersonation URL
-        id: extract-url
-        run: |
-          THREAD_JSON='${{ steps.fetch-thread.outputs.thread_json }}'
-          # Extract URL that starts with https://teacher.app.amiralearning.com?userId=
-          URL=$(echo "$THREAD_JSON" | grep -o 'https://teacher\.app\.amiralearning\.com[?][^"]*' | head -1)
-          
-          if [ -z "$URL" ]; then
-            echo "❌ No impersonation URL found in thread"
-            exit 1
-          fi
-          
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "✅ Extracted URL: $URL"
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({
+              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            });
 
-      - name: Save URL to artifact
-        run: |
-          mkdir -p artifacts
-          echo "${{ steps.extract-url.outputs.url }}" > artifacts/impersonation_url.txt
-          echo "District: ${{ steps.get-district.outputs.district }}" >> artifacts/impersonation_url.txt
-          echo "Timestamp: $(date)" >> artifacts/impersonation_url.txt
+            // Set Slack session cookie
+            await context.addCookies([{
+              name: 'd',
+              value: decodeURIComponent(sessionCookie),
+              domain: '.slack.com',
+              path: '/',
+              secure: true,
+              httpOnly: true,
+              sameSite: 'None'
+            }]);
 
-      - name: Upload artifact
+            const page = await context.newPage();
+
+            // Navigate to #impersonate-prod
+            console.log('🔗 Navigating to #impersonate-prod...');
+            await page.goto('https://amiralearning.slack.com/archives/C099HJNDW59', {
+              waitUntil: 'networkidle',
+              timeout: 30000
+            });
+            await page.waitForTimeout(4000);
+            await page.screenshot({ path: '01_slack_loaded.png' });
+
+            // Check if we landed on Slack properly
+            const title = await page.title();
+            console.log(`📄 Page title: ${title}`);
+
+            if (title.includes('Sign in') || title.includes('Login')) {
+              console.error('❌ Session cookie expired or invalid - not logged in');
+              await page.screenshot({ path: '02_login_required.png' });
+              process.exit(1);
+            }
+
+            // Wait for message input
+            console.log('⌨️  Looking for message input...');
+            const messageInput = await page.waitForSelector(
+              '[data-qa="message_input"], .ql-editor, [contenteditable="true"]',
+              { timeout: 20000 }
+            );
+
+            await messageInput.click();
+            await page.waitForTimeout(500);
+
+            // Type the slash command
+            console.log(`📨 Typing /impersonate-district ${districtName}...`);
+            await page.keyboard.type(`/impersonate-district ${districtName}`);
+            await page.waitForTimeout(1500);
+            await page.screenshot({ path: '02_before_send.png' });
+
+            // Send the command
+            await page.keyboard.press('Enter');
+            console.log('⏳ Waiting for bot response...');
+            await page.waitForTimeout(6000);
+            await page.screenshot({ path: '03_after_send.png' });
+
+            // Extract impersonation URL
+            const url = await page.evaluate(() => {
+              const links = document.querySelectorAll('a[href*="teacher.app.amiralearning.com"]');
+              for (const link of links) {
+                if (link.href.includes('userId=')) {
+                  return link.href;
+                }
+              }
+              // Also check plain text in messages
+              const messages = document.querySelectorAll('[data-qa="message_content"]');
+              for (const msg of messages) {
+                const text = msg.innerText || '';
+                const match = text.match(/https:\/\/teacher\.app\.amiralearning\.com[^\s]*/);
+                if (match) return match[0];
+              }
+              return null;
+            });
+
+            if (!url) {
+              console.error('❌ No impersonation URL found in thread');
+              await browser.close();
+              process.exit(1);
+            }
+
+            console.log(`✅ Found impersonation URL: ${url}`);
+            fs.writeFileSync('impersonation_url.txt', url);
+
+            await browser.close();
+          }
+
+          main().catch(err => {
+            console.error('💥 Script error:', err);
+            process.exit(1);
+          });
+          SCRIPT
+
+      - name: Run impersonation script
+        run: node impersonate.js
+        env:
+          DISTRICT_NAME: ${{ steps.get-district.outputs.district }}
+          SLACK_SESSION_COOKIE: ${{ secrets.SLACK_SESSION_COOKIE }}
+
+      - name: Upload debug screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: '*.png'
+
+      - name: Upload impersonation URL
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: impersonation-link
-          path: artifacts/impersonation_url.txt
+          path: impersonation_url.txt
 
       - name: Summary
+        if: success()
         run: |
-          echo "## ✅ Assessment Checker Complete" >> $GITHUB_STEP_SUMMARY
+          URL=$(cat impersonation_url.txt)
+          echo "## ✅ Impersonation Link Ready" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**District:** ${{ steps.get-district.outputs.district }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Impersonation URL:** ${{ steps.extract-url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Next step: Navigate to the impersonation URL to check assessment completion." >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** $URL" >> $GITHUB_STEP_SUMMARY
