@@ -26,7 +26,7 @@ jobs:
         run: |
           npm init -y
           npm install playwright
-          npx playwright install chromium
+          npx playwright install chromium --with-deps 2>null; Write-Host "Chromium install attempted"
           Write-Host "Playwright installed"
 
       - name: Determine district name
@@ -54,7 +54,21 @@ jobs:
 
             console.log(`Running for district: ${districtName}`);
 
-            const browser = await chromium.launch({ headless: false });
+            const browser = await chromium.launch({ 
+              headless: true,
+              executablePath: (() => {
+                const paths = [
+                  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+                  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+                  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+                  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+                ];
+                const fs = require('fs');
+                for (const p of paths) { if (fs.existsSync(p)) { console.log('Using browser:', p); return p; } }
+                console.log('Using Playwright Chromium');
+                return undefined;
+              })()
+            });
             const context = await browser.newContext({
               userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             });
