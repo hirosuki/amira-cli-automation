@@ -47,41 +47,29 @@ jobs:
           $script = @'
           const { chromium } = require('playwright');
           const fs = require('fs');
+          const path = require('path');
 
           async function main() {
             const districtName = process.env.DISTRICT_NAME;
-            const sessionCookie = process.env.SLACK_SESSION_COOKIE;
+            const userDataDir = 'C:\\Users\\Calvin Xu\\AppData\\Local\\Google\\Chrome\\User Data';
+            const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 
             console.log(`Running for district: ${districtName}`);
+            console.log(`Using Chrome profile: ${userDataDir}`);
 
-            const browser = await chromium.launch({ 
+            // Use persistent context with real Chrome profile (already logged into Slack)
+            const context = await chromium.launchPersistentContext(userDataDir, {
+              executablePath: chromePath,
               headless: true,
-              executablePath: (() => {
-                const paths = [
-                  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-                  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-                  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-                  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-                ];
-                const fs = require('fs');
-                for (const p of paths) { if (fs.existsSync(p)) { console.log('Using browser:', p); return p; } }
-                console.log('Using Playwright Chromium');
-                return undefined;
-              })()
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-blink-features=AutomationControlled',
+                '--profile-directory=Default'
+              ],
+              ignoreDefaultArgs: ['--enable-automation'],
             });
-            const context = await browser.newContext({
-              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            });
-
-            await context.addCookies([{
-              name: 'd',
-              value: decodeURIComponent(sessionCookie),
-              domain: '.slack.com',
-              path: '/',
-              secure: true,
-              httpOnly: true,
-              sameSite: 'None'
-            }]);
 
             const page = await context.newPage();
 
@@ -97,17 +85,35 @@ jobs:
             console.log(`Page title: ${title}`);
 
             if (title.includes('Sign in') || title.includes('Login')) {
-              console.error('Session cookie expired - not logged in');
-              await page.screenshot({ path: '02_login_required.png' });
-              await browser.close();
+              console.error('Not logged in to Slack');
+              await context.close();
               process.exit(1);
             }
 
             console.log('Looking for message input...');
-            const messageInput = await page.waitForSelector(
-              '[data-qa="message_input"] .ql-editor, .p-message_input__input .ql-editor, div[contenteditable="true"][role="textbox"]',
-              { timeout: 20000 }
-            );
+            // Try multiple selectors for Slack message box
+            let messageInput = null;
+            const selectors = [
+              '[data-qa="message_input"] .ql-editor',
+              '.p-message_input__input .ql-editor',
+              'div[contenteditable="true"][role="textbox"]',
+              '.ql-editor[contenteditable="true"]',
+              '[data-message-input="true"]',
+            ];
+            for (const sel of selectors) {
+              try {
+                messageInput = await page.waitForSelector(sel, { timeout: 5000 });
+                console.log(`Found input with selector: ${sel}`);
+                break;
+              } catch(e) { /* try next */ }
+            }
+
+            if (!messageInput) {
+              console.error('Could not find message input');
+              await page.screenshot({ path: '02_no_input.png' });
+              await context.close();
+              process.exit(1);
+            }
 
             await messageInput.click();
             await page.waitForTimeout(500);
@@ -127,22 +133,18 @@ jobs:
               for (const link of links) {
                 if (link.href.includes('userId=')) return link.href;
               }
-              const allLinks = document.querySelectorAll('a');
-              for (const link of allLinks) {
-                if (link.href && link.href.includes('teacher.app.amiralearning.com')) return link.href;
-              }
               return null;
             });
 
             if (!url) {
               console.error('No impersonation URL found');
-              await browser.close();
+              await context.close();
               process.exit(1);
             }
 
             console.log(`Found URL: ${url}`);
             fs.writeFileSync('impersonation_url.txt', url);
-            await browser.close();
+            await context.close();
           }
 
           main().catch(err => {
