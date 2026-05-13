@@ -239,8 +239,8 @@ async function postToSlack(briefing) {
     } else {
       let eventsText = `*📅 Today's Calendar (${eventCount} events):*\n`;
       briefing.todaysEvents.forEach((event, i) => {
-        const startTime = moment(event.start).utc().format('h:mm A');
-        const endTime = moment(event.end).utc().format('h:mm A');
+        const startTime = moment(event.start).subtract(5, 'hours').format('h:mm A');
+        const endTime = moment(event.end).subtract(5, 'hours').format('h:mm A');
         eventsText += `${i + 1}. *${event.summary}* — ${startTime}–${endTime} CST\n`;
       });
       blocks.push({ type: 'section', text: { type: 'mrkdwn', text: eventsText } });
