@@ -41,6 +41,29 @@ jobs:
           Write-Host "District: $district"
           echo "district=$district" >> $env:GITHUB_OUTPUT
 
+
+      - name: Kill Chrome and clear profile lock
+        shell: powershell
+        run: |
+          # Kill any running Chrome instances
+          Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 2
+
+          # Remove SingletonLock files that prevent reuse of the profile
+          $lockFiles = @(
+            "C:\Users\Calvin Xu\AppData\Local\Google\Chrome\User Data\SingletonLock",
+            "C:\Users\Calvin Xu\AppData\Local\Google\Chrome\User Data\SingletonCookie",
+            "C:\Users\Calvin Xu\AppData\Local\Google\Chrome\User Data\SingletonSocket",
+            "C:\Users\Calvin Xu\AppData\Local\Google\Chrome\User Data\Default\SingletonLock"
+          )
+          foreach ($f in $lockFiles) {
+            if (Test-Path $f) {
+              Remove-Item $f -Force
+              Write-Host "Removed: $f"
+            }
+          }
+          Write-Host "Chrome cleared"
+
       - name: Create Playwright script
         shell: powershell
         run: |
