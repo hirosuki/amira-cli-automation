@@ -22,25 +22,29 @@ jobs:
           node-version: '20'
 
       - name: Install Playwright
+        shell: powershell
         run: |
           npm init -y
           npm install playwright
-          npx playwright install chromium --with-deps
+          npx playwright install chromium
+          Write-Host "Playwright installed"
 
       - name: Determine district name
         id: get-district
+        shell: powershell
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            DISTRICT="${{ github.event.inputs.district_name }}"
-          else
-            DISTRICT="${{ github.event.client_payload.district_name }}"
-          fi
-          echo "district=$DISTRICT" >> $GITHUB_OUTPUT
-          echo "✅ District: $DISTRICT"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $district = "${{ github.event.inputs.district_name }}"
+          } else {
+            $district = "${{ github.event.client_payload.district_name }}"
+          }
+          Write-Host "District: $district"
+          echo "district=$district" >> $env:GITHUB_OUTPUT
 
       - name: Create Playwright script
+        shell: powershell
         run: |
-          cat > impersonate.js << 'SCRIPT'
+          $script = @'
           const { chromium } = require('playwright');
           const fs = require('fs');
 
@@ -48,14 +52,13 @@ jobs:
             const districtName = process.env.DISTRICT_NAME;
             const sessionCookie = process.env.SLACK_SESSION_COOKIE;
 
-            console.log(`🏫 Running for district: ${districtName}`);
+            console.log(`Running for district: ${districtName}`);
 
-            const browser = await chromium.launch({ headless: true });
+            const browser = await chromium.launch({ headless: false });
             const context = await browser.newContext({
               userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             });
 
-            // Set Slack session cookie
             await context.addCookies([{
               name: 'd',
               value: decodeURIComponent(sessionCookie),
@@ -68,84 +71,76 @@ jobs:
 
             const page = await context.newPage();
 
-            // Navigate to #impersonate-prod
-            console.log('🔗 Navigating to #impersonate-prod...');
+            console.log('Navigating to #impersonate-prod...');
             await page.goto('https://amiralearning.slack.com/archives/C099HJNDW59', {
               waitUntil: 'networkidle',
               timeout: 30000
             });
-            await page.waitForTimeout(4000);
+            await page.waitForTimeout(5000);
             await page.screenshot({ path: '01_slack_loaded.png' });
 
-            // Check if we landed on Slack properly
             const title = await page.title();
-            console.log(`📄 Page title: ${title}`);
+            console.log(`Page title: ${title}`);
 
             if (title.includes('Sign in') || title.includes('Login')) {
-              console.error('❌ Session cookie expired or invalid - not logged in');
+              console.error('Session cookie expired - not logged in');
               await page.screenshot({ path: '02_login_required.png' });
+              await browser.close();
               process.exit(1);
             }
 
-            // Wait for message input
-            console.log('⌨️  Looking for message input...');
+            console.log('Looking for message input...');
             const messageInput = await page.waitForSelector(
-              '[data-qa="message_input"], .ql-editor, [contenteditable="true"]',
+              '[data-qa="message_input"] .ql-editor, .p-message_input__input .ql-editor, div[contenteditable="true"][role="textbox"]',
               { timeout: 20000 }
             );
 
             await messageInput.click();
             await page.waitForTimeout(500);
 
-            // Type the slash command
-            console.log(`📨 Typing /impersonate-district ${districtName}...`);
+            console.log(`Typing /impersonate-district ${districtName}...`);
             await page.keyboard.type(`/impersonate-district ${districtName}`);
-            await page.waitForTimeout(1500);
+            await page.waitForTimeout(2000);
             await page.screenshot({ path: '02_before_send.png' });
 
-            // Send the command
             await page.keyboard.press('Enter');
-            console.log('⏳ Waiting for bot response...');
-            await page.waitForTimeout(6000);
+            console.log('Waiting for bot response...');
+            await page.waitForTimeout(8000);
             await page.screenshot({ path: '03_after_send.png' });
 
-            // Extract impersonation URL
             const url = await page.evaluate(() => {
               const links = document.querySelectorAll('a[href*="teacher.app.amiralearning.com"]');
               for (const link of links) {
-                if (link.href.includes('userId=')) {
-                  return link.href;
-                }
+                if (link.href.includes('userId=')) return link.href;
               }
-              // Also check plain text in messages
-              const messages = document.querySelectorAll('[data-qa="message_content"]');
-              for (const msg of messages) {
-                const text = msg.innerText || '';
-                const match = text.match(/https:\/\/teacher\.app\.amiralearning\.com[^\s]*/);
-                if (match) return match[0];
+              const allLinks = document.querySelectorAll('a');
+              for (const link of allLinks) {
+                if (link.href && link.href.includes('teacher.app.amiralearning.com')) return link.href;
               }
               return null;
             });
 
             if (!url) {
-              console.error('❌ No impersonation URL found in thread');
+              console.error('No impersonation URL found');
               await browser.close();
               process.exit(1);
             }
 
-            console.log(`✅ Found impersonation URL: ${url}`);
+            console.log(`Found URL: ${url}`);
             fs.writeFileSync('impersonation_url.txt', url);
-
             await browser.close();
           }
 
           main().catch(err => {
-            console.error('💥 Script error:', err);
+            console.error('Error:', err);
             process.exit(1);
           });
-          SCRIPT
+          '@
+          $script | Out-File -FilePath impersonate.js -Encoding utf8
+          Write-Host "Script created"
 
       - name: Run impersonation script
+        shell: powershell
         run: node impersonate.js
         env:
           DISTRICT_NAME: ${{ steps.get-district.outputs.district }}
@@ -167,9 +162,10 @@ jobs:
 
       - name: Summary
         if: success()
+        shell: powershell
         run: |
-          URL=$(cat impersonation_url.txt)
-          echo "## ✅ Impersonation Link Ready" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**District:** ${{ steps.get-district.outputs.district }}" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** $URL" >> $GITHUB_STEP_SUMMARY
+          $url = Get-Content impersonation_url.txt
+          echo "## Assessment Checker Complete" >> $env:GITHUB_STEP_SUMMARY
+          echo "**District:** ${{ steps.get-district.outputs.district }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "**URL:** $url" >> $env:GITHUB_STEP_SUMMARY
+          Write-Host "Done: $url"
