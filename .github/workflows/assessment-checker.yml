@@ -1,0 +1,94 @@
+name: Assessment Checker
+
+on:
+  workflow_dispatch:
+    inputs:
+      district_name:
+        description: 'District name (e.g., Gonzales Unified School District)'
+        required: true
+        type: string
+  repository_dispatch:
+    types: [check-assessment]
+
+jobs:
+  impersonate-and-check:
+    runs-on: ubuntu-latest
+    outputs:
+      impersonation_url: ${{ steps.extract-url.outputs.url }}
+    steps:
+      - name: Determine district name
+        id: get-district
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            DISTRICT="${{ github.event.inputs.district_name }}"
+          else
+            DISTRICT="${{ github.event.client_payload.district_name }}"
+          fi
+          echo "district=$DISTRICT" >> $GITHUB_OUTPUT
+          echo "District: $DISTRICT"
+
+      - name: Post impersonate command to Slack
+        id: post-command
+        run: |
+          RESPONSE=$(curl -X POST https://amiralearning.slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "channel": "C099HJNDW59",
+              "text": "/impersonate-district ${{ steps.get-district.outputs.district }}"
+            }')
+          
+          echo "Response: $RESPONSE"
+          TS=$(echo "$RESPONSE" | grep -o '"ts":"[^"]*' | cut -d'"' -f4)
+          echo "message_ts=$TS" >> $GITHUB_OUTPUT
+          echo "Posted message timestamp: $TS"
+
+      - name: Wait for bot response
+        run: sleep 3
+
+      - name: Fetch thread replies
+        id: fetch-thread
+        run: |
+          THREAD_RESPONSE=$(curl -X GET "https://amiralearning.slack.com/api/conversations.replies" \
+            -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
+            -d "channel=C099HJNDW59&ts=${{ steps.post-command.outputs.message_ts }}")
+          
+          echo "Thread Response: $THREAD_RESPONSE"
+          echo "thread_json=$THREAD_RESPONSE" >> $GITHUB_OUTPUT
+
+      - name: Extract impersonation URL
+        id: extract-url
+        run: |
+          THREAD_JSON='${{ steps.fetch-thread.outputs.thread_json }}'
+          # Extract URL that starts with https://teacher.app.amiralearning.com?userId=
+          URL=$(echo "$THREAD_JSON" | grep -o 'https://teacher\.app\.amiralearning\.com[?][^"]*' | head -1)
+          
+          if [ -z "$URL" ]; then
+            echo "❌ No impersonation URL found in thread"
+            exit 1
+          fi
+          
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "✅ Extracted URL: $URL"
+
+      - name: Save URL to artifact
+        run: |
+          mkdir -p artifacts
+          echo "${{ steps.extract-url.outputs.url }}" > artifacts/impersonation_url.txt
+          echo "District: ${{ steps.get-district.outputs.district }}" >> artifacts/impersonation_url.txt
+          echo "Timestamp: $(date)" >> artifacts/impersonation_url.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: impersonation-link
+          path: artifacts/impersonation_url.txt
+
+      - name: Summary
+        run: |
+          echo "## ✅ Assessment Checker Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**District:** ${{ steps.get-district.outputs.district }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Impersonation URL:** ${{ steps.extract-url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Next step: Navigate to the impersonation URL to check assessment completion." >> $GITHUB_STEP_SUMMARY
