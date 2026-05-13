@@ -1,0 +1,44 @@
+name: MWGL Case Report
+
+on:
+  schedule:
+    # Every weekday at 7:50 AM CST (13:50 UTC)
+    - cron: '50 13 * * 1-5'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  mwgl-cases:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm install puppeteer axios json2csv googleapis dotenv
+
+      - name: Run MWGL Case Report
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
+          GOOGLE_DRIVE_CREDENTIALS: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+        run: |
+          node mwgl-cases.js
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mwgl-workflow-logs
+          path: |
+            *.log
+            *.csv
+          retention-days: 7

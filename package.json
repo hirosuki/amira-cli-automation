@@ -1,24 +1,30 @@
 {
-  "name": "daily-briefing-automation",
-  "version": "2.0.0",
-  "description": "Daily briefing automation for Gmail, Google Calendar, and Slack",
-  "main": "index.js",
+  "name": "amira-automation",
+  "version": "1.0.0",
+  "description": "MWGL case reporting and other Amira Learning automation workflows",
+  "main": "mwgl-cases.js",
   "scripts": {
-    "briefing": "node scripts/daily-briefing-v2.js",
-    "test": "echo \"No tests configured\" && exit 0"
+    "mwgl": "node mwgl-cases.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
+    "amira",
+    "salesforce",
+    "mwgl",
     "automation",
-    "gmail",
-    "calendar",
     "slack",
-    "briefing"
+    "google-drive"
   ],
   "author": "Calvin Xu",
   "license": "MIT",
   "dependencies": {
-    "googleapis": "^140.0.0"
+    "puppeteer": "^21.0.0",
+    "axios": "^1.6.0",
+    "json2csv": "^6.0.0",
+    "googleapis": "^118.0.0",
+    "dotenv": "^16.3.0"
   },
+  "devDependencies": {},
   "engines": {
     "node": ">=18.0.0"
   }
