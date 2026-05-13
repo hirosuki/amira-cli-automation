@@ -2,7 +2,7 @@ name: Daily Briefing
 
 on:
   schedule:
-    - cron: '45 13 * * 1-5'  # 1:45 PM UTC = 7:45 AM CST, Monday-Friday
+    - cron: '45 13 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -10,47 +10,29 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '18'
       
-      - name: Install dependencies
-        run: npm install
+      - run: npm install
       
-      - name: Run daily briefing script
+      - name: Run Daily Briefing
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: daily-briefing
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
           SLACK_USER_ID: ${{ secrets.SLACK_USER_ID }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SLACK_USER_TOKEN: ${{ secrets.SLACK_USER_TOKEN }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: node scripts/daily-briefing-v2.js
-
-      - name: Post briefing to Slack
-        if: always()
-        continue-on-error: true
-        uses: slackapi/slack-github-action@v1.24.0
-        with:
-          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
-          slack-message: |
-            📊 Daily Briefing Report
-            <@${{ secrets.SLACK_USER_ID }}>
-            
-            Check the job summary for details.
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
       
-      - name: Upload briefing report
-        uses: actions/upload-artifact@v4
-        with:
-          name: daily-briefing-report
-          path: ./reports/briefing.json
-          retention-days: 30
+      - uses: actions/upload-artifact@v4
         if: always()
+        with:
+          name: briefing-logs
+          path: logs/

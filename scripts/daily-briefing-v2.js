@@ -192,12 +192,15 @@ async function fetchTodaysEvents(auth) {
         start: start ? new Date(start).toLocaleTimeString('en-US', { 
           hour: '2-digit', 
           minute: '2-digit',
-          hour12: true 
+          hour12: true, 
+          timeZone: 'America/Chicago'
         }) : 'All day',
+        
         end: end ? new Date(end).toLocaleTimeString('en-US', { 
           hour: '2-digit', 
           minute: '2-digit',
-          hour12: true 
+          hour12: true, 
+          timeZone: 'America/Chicago'
         }) : '',
       };
     });

@@ -1,0 +1,210 @@
+name: Assessment Checker
+
+on:
+  workflow_dispatch:
+    inputs:
+      district_name:
+        description: 'District name (e.g., Gonzales Unified School District)'
+        required: true
+        type: string
+  repository_dispatch:
+    types: [check-assessment]
+
+jobs:
+  impersonate-and-check:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        shell: powershell
+        run: |
+          npm init -y
+          npm install playwright
+          npx playwright install chromium --with-deps 2>null; Write-Host "Chromium install attempted"
+          Write-Host "Playwright installed"
+
+      - name: Determine district name
+        id: get-district
+        shell: powershell
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $district = "${{ github.event.inputs.district_name }}"
+          } else {
+            $district = "${{ github.event.client_payload.district_name }}"
+          }
+          Write-Host "District: $district"
+          echo "district=$district" >> $env:GITHUB_OUTPUT
+
+
+      - name: Kill Chrome and clear profile lock
+        shell: powershell
+        run: |
+          # Kill any running Chrome instances
+          Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 2
+
+          # Remove SingletonLock files that prevent reuse of the profile
+          $lockFiles = @(
+            "C:\Users\Calvin Xu\AppData\Local\Google\Chrome\User Data\SingletonLock",
+            "C:\Users\Calvin Xu\AppData\Local\Google\Chrome\User Data\SingletonCookie",
+            "C:\Users\Calvin Xu\AppData\Local\Google\Chrome\User Data\SingletonSocket",
+            "C:\Users\Calvin Xu\AppData\Local\Google\Chrome\User Data\Default\SingletonLock"
+          )
+          foreach ($f in $lockFiles) {
+            if (Test-Path $f) {
+              Remove-Item $f -Force
+              Write-Host "Removed: $f"
+            }
+          }
+          Write-Host "Chrome cleared"
+
+      - name: Create Playwright script
+        shell: powershell
+        run: |
+          $script = @'
+          const { chromium } = require('playwright');
+          const fs = require('fs');
+          const path = require('path');
+
+          async function main() {
+            const districtName = process.env.DISTRICT_NAME;
+            const userDataDir = 'C:\\Users\\Calvin Xu\\AppData\\Local\\Google\\Chrome\\User Data';
+            const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+
+            console.log(`Running for district: ${districtName}`);
+            console.log(`Using Chrome profile: ${userDataDir}`);
+
+            // Use persistent context with real Chrome profile (already logged into Slack)
+            const context = await chromium.launchPersistentContext(userDataDir, {
+              executablePath: chromePath,
+              headless: true,
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-blink-features=AutomationControlled',
+                '--profile-directory=Default'
+              ],
+              ignoreDefaultArgs: ['--enable-automation'],
+            });
+
+            const page = await context.newPage();
+
+            console.log('Navigating to #impersonate-prod...');
+            await page.goto('https://amiralearning.slack.com/archives/C099HJNDW59', {
+              waitUntil: 'networkidle',
+              timeout: 30000
+            });
+            await page.waitForTimeout(5000);
+            await page.screenshot({ path: '01_slack_loaded.png' });
+
+            const title = await page.title();
+            console.log(`Page title: ${title}`);
+
+            if (title.includes('Sign in') || title.includes('Login')) {
+              console.error('Not logged in to Slack');
+              await context.close();
+              process.exit(1);
+            }
+
+            console.log('Looking for message input...');
+            // Try multiple selectors for Slack message box
+            let messageInput = null;
+            const selectors = [
+              '[data-qa="message_input"] .ql-editor',
+              '.p-message_input__input .ql-editor',
+              'div[contenteditable="true"][role="textbox"]',
+              '.ql-editor[contenteditable="true"]',
+              '[data-message-input="true"]',
+            ];
+            for (const sel of selectors) {
+              try {
+                messageInput = await page.waitForSelector(sel, { timeout: 5000 });
+                console.log(`Found input with selector: ${sel}`);
+                break;
+              } catch(e) { /* try next */ }
+            }
+
+            if (!messageInput) {
+              console.error('Could not find message input');
+              await page.screenshot({ path: '02_no_input.png' });
+              await context.close();
+              process.exit(1);
+            }
+
+            await messageInput.click();
+            await page.waitForTimeout(500);
+
+            console.log(`Typing /impersonate-district ${districtName}...`);
+            await page.keyboard.type(`/impersonate-district ${districtName}`);
+            await page.waitForTimeout(2000);
+            await page.screenshot({ path: '02_before_send.png' });
+
+            await page.keyboard.press('Enter');
+            console.log('Waiting for bot response...');
+            await page.waitForTimeout(8000);
+            await page.screenshot({ path: '03_after_send.png' });
+
+            const url = await page.evaluate(() => {
+              const links = document.querySelectorAll('a[href*="teacher.app.amiralearning.com"]');
+              for (const link of links) {
+                if (link.href.includes('userId=')) return link.href;
+              }
+              return null;
+            });
+
+            if (!url) {
+              console.error('No impersonation URL found');
+              await context.close();
+              process.exit(1);
+            }
+
+            console.log(`Found URL: ${url}`);
+            fs.writeFileSync('impersonation_url.txt', url);
+            await context.close();
+          }
+
+          main().catch(err => {
+            console.error('Error:', err);
+            process.exit(1);
+          });
+          '@
+          $script | Out-File -FilePath impersonate.js -Encoding utf8
+          Write-Host "Script created"
+
+      - name: Run impersonation script
+        shell: powershell
+        run: node impersonate.js
+        env:
+          DISTRICT_NAME: ${{ steps.get-district.outputs.district }}
+          SLACK_SESSION_COOKIE: ${{ secrets.SLACK_SESSION_COOKIE }}
+
+      - name: Upload debug screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: '*.png'
+
+      - name: Upload impersonation URL
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: impersonation-link
+          path: impersonation_url.txt
+
+      - name: Summary
+        if: success()
+        shell: powershell
+        run: |
+          $url = Get-Content impersonation_url.txt
+          echo "## Assessment Checker Complete" >> $env:GITHUB_STEP_SUMMARY
+          echo "**District:** ${{ steps.get-district.outputs.district }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "**URL:** $url" >> $env:GITHUB_STEP_SUMMARY
+          Write-Host "Done: $url"
