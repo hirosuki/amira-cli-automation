@@ -239,9 +239,23 @@ async function postToSlack(briefing) {
     } else {
       let eventsText = `*📅 Today's Calendar (${eventCount} events):*\n`;
       briefing.todaysEvents.forEach((event, i) => {
-        const startTime = moment(event.start).subtract(5, 'hours').format('h:mm A');
-        const endTime = moment(event.end).subtract(5, 'hours').format('h:mm A');
-        eventsText += `${i + 1}. *${event.summary}* — ${startTime}–${endTime} CST\n`;
+        // Parse start and end times (handle both dateTime and all-day dates)
+        const start = moment(event.start);
+        const end = moment(event.end);
+        
+        // Check if it's an all-day event (no time component)
+        const isAllDay = event.start.length === 10; // YYYY-MM-DD format
+        
+        let timeStr;
+        if (isAllDay) {
+          timeStr = 'All day';
+        } else {
+          const startTime = start.format('h:mm A');
+          const endTime = end.format('h:mm A');
+          timeStr = `${startTime}–${endTime}`;
+        }
+        
+        eventsText += `${i + 1}. *${event.summary}* — ${timeStr}\n`;
       });
       blocks.push({ type: 'section', text: { type: 'mrkdwn', text: eventsText } });
     }
