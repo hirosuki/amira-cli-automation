@@ -2,8 +2,8 @@ name: Daily Briefing
 
 on:
   schedule:
-      - cron: '45 13 * * 1-5'
-        workflow_dispatch::
+    - cron: '45 13 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   daily-briefing:
@@ -22,7 +22,6 @@ jobs:
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-              - cron: '45 13 * * 1-5'
           SLACK_USER_ID: ${{ secrets.SLACK_USER_ID }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
