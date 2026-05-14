@@ -239,10 +239,6 @@ async function postToSlack(briefing) {
     } else {
       let eventsText = `*📅 Today's Calendar (${eventCount} events):*\n`;
       briefing.todaysEvents.forEach((event, i) => {
-        // Parse ISO datetime strings properly, preserving timezone info
-        const start = moment(event.start);
-        const end = moment(event.end);
-        
         // Check if it's an all-day event (no time component)
         const isAllDay = event.start.length === 10; // YYYY-MM-DD format
         
@@ -250,10 +246,27 @@ async function postToSlack(briefing) {
         if (isAllDay) {
           timeStr = 'All day';
         } else {
-          // Use utcOffset to preserve the original timezone, then format
-          const startTime = start.utcOffset(start.utcOffset()).format('h:mm A');
-          const endTime = end.utcOffset(end.utcOffset()).format('h:mm A');
-          timeStr = `${startTime}–${endTime}`;
+          // Parse ISO 8601 datetime with timezone info
+          // Format: 2024-05-17T16:00:00-05:00
+          const startMatch = event.start.match(/(\d{2}):(\d{2}):(\d{2})([-+]\d{2}:\d{2})/);
+          const endMatch = event.end.match(/(\d{2}):(\d{2}):(\d{2})([-+]\d{2}:\d{2})/);
+          
+          if (startMatch && endMatch) {
+            const startHour = parseInt(startMatch[1], 10);
+            const startMin = startMatch[2];
+            const endHour = parseInt(endMatch[1], 10);
+            const endMin = endMatch[2];
+            
+            const startMoment = moment(`${startHour}:${startMin}`, 'HH:mm');
+            const endMoment = moment(`${endHour}:${endMin}`, 'HH:mm');
+            
+            timeStr = `${startMoment.format('h:mm A')}–${endMoment.format('h:mm A')}`;
+          } else {
+            // Fallback: just parse as-is
+            const startTime = moment(event.start).format('h:mm A');
+            const endTime = moment(event.end).format('h:mm A');
+            timeStr = `${startTime}–${endTime}`;
+          }
         }
         
         eventsText += `${i + 1}. *${event.summary}* — ${timeStr}\n`;
