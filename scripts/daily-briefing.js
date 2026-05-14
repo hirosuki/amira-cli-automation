@@ -239,7 +239,7 @@ async function postToSlack(briefing) {
     } else {
       let eventsText = `*📅 Today's Calendar (${eventCount} events):*\n`;
       briefing.todaysEvents.forEach((event, i) => {
-        // Parse start and end times (handle both dateTime and all-day dates)
+        // Parse ISO datetime strings properly, preserving timezone info
         const start = moment(event.start);
         const end = moment(event.end);
         
@@ -250,8 +250,9 @@ async function postToSlack(briefing) {
         if (isAllDay) {
           timeStr = 'All day';
         } else {
-          const startTime = start.format('h:mm A');
-          const endTime = end.format('h:mm A');
+          // Use utcOffset to preserve the original timezone, then format
+          const startTime = start.utcOffset(start.utcOffset()).format('h:mm A');
+          const endTime = end.utcOffset(end.utcOffset()).format('h:mm A');
           timeStr = `${startTime}–${endTime}`;
         }
         
