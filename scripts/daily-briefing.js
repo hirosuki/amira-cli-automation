@@ -221,12 +221,35 @@ async function postToSlack(briefing) {
         text: { type: 'mrkdwn', text: '*✉️ Unread Emails:*\nNo unread emails since yesterday. 🎉' },
       });
     } else {
-      let emailText = `*✉️ Unread Emails (${emailCount}):*\n`;
-      briefing.unreadEmails.emails.slice(0, 5).forEach((email, i) => {
-        emailText += `${i + 1}. *${email.subject}*\n   _From: ${email.from}_\n`;
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*✉️ Unread Emails (${emailCount}):*` },
       });
-      if (emailCount > 5) emailText += `_...and ${emailCount - 5} more_\n`;
-      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: emailText } });
+      
+      // Add each email as a separate block for better readability
+      briefing.unreadEmails.emails.slice(0, 5).forEach((email, i) => {
+        blocks.push({
+          type: 'section',
+          fields: [
+            {
+              type: 'mrkdwn',
+              text: `*${i + 1}. ${email.subject}*\n_${email.from}_`,
+            },
+          ],
+        });
+      });
+      
+      if (emailCount > 5) {
+        blocks.push({
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `_+ ${emailCount - 5} more email${emailCount - 5 === 1 ? '' : 's'}_`,
+            },
+          ],
+        });
+      }
     }
     blocks.push({ type: 'divider' });
 
