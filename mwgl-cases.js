@@ -22,31 +22,59 @@ const SF_PASSWORD = process.env.SF_PASSWORD;
 const SF_SECURITY_TOKEN = process.env.SF_SECURITY_TOKEN || '';
 
 /**
- * Authenticate with Salesforce REST API (no browser needed)
+ * Authenticate with Salesforce SOAP login API (no Connected App needed)
  * Returns { accessToken, instanceUrl }
  */
 async function sfLogin() {
-  console.log('🔐 Authenticating with Salesforce REST API...');
+  console.log('🔐 Authenticating with Salesforce SOAP API...');
 
-  const params = new URLSearchParams({
-    grant_type: 'password',
-    client_id: '3MVG9pe2TCmdlRSjk4OJRFenTAyKjuqV_PXAlKQ5hFAtcDPJjkgHDr2b3OyxjkYCbMjXlJXvkNblWi2KJhYze',
-    client_secret: '6E7A3F2C7E9A1B4D8F2E5C9A3B7E1D4F6A2C8E5B9D3F7A1C4E8B2D6F9A3C7E',
-    username: SF_USERNAME,
-    password: SF_PASSWORD + SF_SECURITY_TOKEN,
-  });
+  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:urn="urn:partner.soap.sforce.com">
+  <soapenv:Body>
+    <urn:login>
+      <urn:username>${SF_USERNAME}</urn:username>
+      <urn:password>${SF_PASSWORD}${SF_SECURITY_TOKEN}</urn:password>
+    </urn:login>
+  </soapenv:Body>
+</soapenv:Envelope>`;
 
   try {
     const resp = await axios.post(
-      `${SF_LOGIN_URL}/services/oauth2/token`,
-      params.toString(),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      `${SF_LOGIN_URL}/services/Soap/u/59.0`,
+      soapBody,
+      {
+        headers: {
+          'Content-Type': 'text/xml',
+          'SOAPAction': 'login',
+        },
+        timeout: 30000,
+      }
     );
-    console.log(`✅ SF login successful. Instance: ${resp.data.instance_url}`);
-    return { accessToken: resp.data.access_token, instanceUrl: resp.data.instance_url };
+
+    const xml = resp.data;
+    console.log('  SOAP response received, parsing...');
+
+    // Extract sessionId and serverUrl from XML response
+    const sessionMatch = xml.match(/<sessionId>([^<]+)<\/sessionId>/);
+    const serverMatch = xml.match(/<serverUrl>([^<]+)<\/serverUrl>/);
+
+    if (!sessionMatch) {
+      // Check for fault
+      const faultMatch = xml.match(/<faultstring>([^<]+)<\/faultstring>/);
+      throw new Error(`SOAP login failed: ${faultMatch ? faultMatch[1] : 'no sessionId in response'}`);
+    }
+
+    const sessionId = sessionMatch[1];
+    const serverUrl = serverMatch[1];
+    // Instance URL is the host part of serverUrl
+    const instanceUrl = serverUrl.match(/^(https?:\/\/[^\/]+)/)[1];
+
+    console.log(`✅ SF login successful. Instance: ${instanceUrl}`);
+    return { accessToken: sessionId, instanceUrl };
   } catch (err) {
     const detail = err.response?.data || err.message;
-    throw new Error(`SF OAuth failed: ${JSON.stringify(detail)}`);
+    throw new Error(`SF SOAP login failed: ${typeof detail === 'string' ? detail.slice(0, 300) : JSON.stringify(detail)}`);
   }
 }
 
