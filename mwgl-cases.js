@@ -5,8 +5,12 @@ const fs = require('fs');
 const path = require('path');
 const { Parser } = require('json2csv');
 
-// Salesforce report URL
-const REPORT_URL = 'https://istation.lightning.force.com/lightning/r/Report/00OUb00000JDJUwMAP/view?queryScope=userFolders';
+// Salesforce report ID (extracted from report URL)
+const REPORT_ID = '00OUb00000JDJUwMAP';
+const SF_BASE_URL = 'https://istation.lightning.force.com';
+
+// Direct CSV export URL — bypasses Lightning UI entirely, no grid wait needed
+const REPORT_EXPORT_URL = `${SF_BASE_URL}/00OUb00000JDJUwMAP?export=1&enc=UTF-8&xf=csv`;
 
 // Priority levels
 const ACTIVE_PRIORITIES = ['P0', 'P1', 'P2'];
@@ -21,61 +25,148 @@ const SF_USERNAME = process.env.SF_USERNAME;
 const SF_PASSWORD = process.env.SF_PASSWORD;
 
 /**
- * Extract case data from Salesforce report table
+ * Parse CSV text into array of objects using the header row
  */
-async function extractCaseData(page) {
-  console.log('Extracting case data from Salesforce report...');
+function parseCsv(csvText) {
+  const lines = csvText.trim().split('\n').filter(line => line.trim());
+  if (lines.length < 2) return [];
+
+  // Find the actual header row (skip Salesforce metadata lines at top)
+  let headerIdx = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].toLowerCase().includes('status') || lines[i].toLowerCase().includes('case number')) {
+      headerIdx = i;
+      break;
+    }
+  }
+
+  const headers = lines[headerIdx].split(',').map(h => h.replace(/"/g, '').trim());
+  const rows = [];
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim() || line.startsWith('"Grand Total"') || line.startsWith('Grand Total')) continue;
+
+    // Handle quoted fields with commas inside
+    const values = [];
+    let current = '';
+    let inQuotes = false;
+    for (let c = 0; c < line.length; c++) {
+      if (line[c] === '"') {
+        inQuotes = !inQuotes;
+      } else if (line[c] === ',' && !inQuotes) {
+        values.push(current.trim());
+        current = '';
+      } else {
+        current += line[c];
+      }
+    }
+    values.push(current.trim());
+
+    const row = {};
+    headers.forEach((h, idx) => {
+      row[h] = values[idx] || '';
+    });
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+/**
+ * Normalize raw SF export row into our standard case shape
+ */
+function normalizeCase(row) {
+  // SF export column names can vary — try common variants
+  return {
+    status: row['Status'] || row['Case Status'] || '',
+    accountName: row['Account Name'] || row['Account'] || '',
+    accountState: row['Billing State/Province'] || row['State'] || '',
+    dateTimeOpened: row['Date/Time Opened'] || row['Opened'] || row['Created Date'] || '',
+    caseNumber: row['Case Number'] || row['Number'] || '',
+    subject: row['Subject'] || '',
+    caseOwner: row['Case Owner'] || row['Owner'] || '',
+    age: row['Age'] || row['Days Open'] || '',
+  };
+}
+
+/**
+ * Log in to Salesforce via Puppeteer and return session cookies
+ */
+async function getSalesforceCookies() {
+  console.log('🔐 Launching browser for Salesforce authentication...');
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
 
   try {
-    // Wait for the report to load — Lightning reports can take 30-60s to render
-    console.log(`  Current URL: ${page.url()}`);
-    console.log(`  Page title: ${await page.title()}`);
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
 
-    // Wait for grid with extended timeout + extra hydration wait
-    try {
-      await page.waitForSelector('[role="grid"]', { timeout: 60000 });
-    } catch (selectorErr) {
-      const fallbackUrl = page.url();
-      const fallbackTitle = await page.title();
-      console.error(`  Selector timed out. URL: ${fallbackUrl} | Title: ${fallbackTitle}`);
-      throw selectorErr;
+    // Navigate to login page
+    await page.goto(`${SF_BASE_URL}/login`, { waitUntil: 'networkidle2', timeout: 30000 });
+    console.log(`  Login page URL: ${page.url()}`);
+
+    // Fill credentials
+    await page.waitForSelector('#username', { timeout: 15000 });
+    await page.type('#username', SF_USERNAME);
+    await page.type('#password', SF_PASSWORD);
+    await page.click('#Login');
+
+    // Wait for redirect away from login
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+    const postLoginUrl = page.url();
+    console.log(`  Post-login URL: ${postLoginUrl}`);
+
+    if (postLoginUrl.includes('login')) {
+      throw new Error('Login failed — still on login page after submit. Check SF_USERNAME / SF_PASSWORD secrets.');
     }
 
-    // Extra wait for dynamic content to fully render
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Grab all cookies for this domain
+    const cookies = await page.cookies();
+    console.log(`✅ Authenticated. Got ${cookies.length} cookies.`);
+    return { browser, cookies };
 
-    // Extract table data
-    const cases = await page.evaluate(() => {
-      const rows = Array.from(document.querySelectorAll('[role="row"]'));
-      const data = [];
-
-      rows.forEach((row, idx) => {
-        if (idx === 0) return; // Skip header row
-
-        const cells = Array.from(row.querySelectorAll('[role="gridcell"]'));
-        if (cells.length >= 8) {
-          data.push({
-            status: cells[0]?.textContent?.trim() || '',
-            accountName: cells[1]?.textContent?.trim() || '',
-            accountState: cells[2]?.textContent?.trim() || '',
-            dateTimeOpened: cells[3]?.textContent?.trim() || '',
-            caseNumber: cells[4]?.textContent?.trim() || '',
-            subject: cells[5]?.textContent?.trim() || '',
-            caseOwner: cells[6]?.textContent?.trim() || '',
-            age: cells[7]?.textContent?.trim() || '',
-          });
-        }
-      });
-
-      return data;
-    });
-
-    console.log(`Extracted ${cases.length} total cases`);
-    return cases;
-  } catch (error) {
-    console.error('Error extracting case data:', error);
-    throw error;
+  } catch (err) {
+    await browser.close();
+    throw err;
   }
+}
+
+/**
+ * Download the report as CSV using session cookies (no UI wait)
+ */
+async function downloadReportCsv(cookies) {
+  console.log('📥 Downloading report CSV export...');
+
+  // Convert Puppeteer cookies to cookie header string
+  const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+  const response = await axios.get(REPORT_EXPORT_URL, {
+    headers: {
+      Cookie: cookieHeader,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    },
+    maxRedirects: 5,
+    timeout: 30000,
+  });
+
+  const contentType = response.headers['content-type'] || '';
+  console.log(`  Response status: ${response.status} | Content-Type: ${contentType}`);
+
+  if (response.status !== 200) {
+    throw new Error(`CSV export returned HTTP ${response.status}`);
+  }
+
+  // If we got HTML back instead of CSV, we're probably on a login/error page
+  if (contentType.includes('html') || String(response.data).trim().startsWith('<!DOCTYPE')) {
+    throw new Error('CSV export returned HTML instead of CSV — session may have expired or export URL is wrong.');
+  }
+
+  console.log(`✅ CSV downloaded (${String(response.data).length} bytes)`);
+  return String(response.data);
 }
 
 /**
@@ -106,7 +197,7 @@ function generateSummary(cases) {
 
   cases.forEach(caseItem => {
     ACTIVE_PRIORITIES.forEach(p => {
-      if (caseItem.caseNumber?.includes(p) || caseItem.status?.includes(p)) {
+      if (caseItem.caseNumber?.includes(p) || caseItem.status?.includes(p) || caseItem.subject?.includes(p)) {
         byPriority[p] = (byPriority[p] || 0) + 1;
       }
     });
@@ -127,139 +218,86 @@ function generateSummary(cases) {
  * Format and send summary to Slack
  */
 async function sendToSlack(cases, summary) {
-  console.log('Sending summary to Slack...');
+  console.log('📤 Sending summary to Slack...');
 
-  const priorityRows = Object.entries(summary.byPriority)
-    .map(([priority, count]) => `${priority}: ${count}`)
-    .join(' | ');
+  const priorityRows = ACTIVE_PRIORITIES
+    .filter(p => summary.byPriority[p])
+    .map(p => `${p}: ${summary.byPriority[p]}`)
+    .join(' | ') || 'None';
 
   const statusRows = Object.entries(summary.byStatus)
-    .map(([status, count]) => `${status}: ${count}`)
-    .join('\n');
+    .map(([status, count]) => `• ${status}: ${count}`)
+    .join('\n') || 'None';
 
   const message = {
     channel: SLACK_CHANNEL,
     blocks: [
       {
         type: 'header',
-        text: {
-          type: 'plain_text',
-          text: '📋 MWGL Case Report',
-        },
+        text: { type: 'plain_text', text: '📋 MWGL Case Report' },
       },
       {
         type: 'section',
         fields: [
-          {
-            type: 'mrkdwn',
-            text: `*Total Active Cases:*\n${summary.totalCases}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*By Priority:*\n${priorityRows}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*By Status:*\n${statusRows}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*Last Updated:*\n${summary.asOf}`,
-          },
+          { type: 'mrkdwn', text: `*Total Active Cases:*\n${summary.totalCases}` },
+          { type: 'mrkdwn', text: `*By Priority:*\n${priorityRows}` },
         ],
       },
       {
-        type: 'divider',
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*By Status:*\n${statusRows}` },
       },
+      { type: 'divider' },
       {
         type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Case Details:*\nCSV exported to Google Drive. Click below for full report.`,
-        },
+        text: { type: 'mrkdwn', text: `*Last Updated:* ${summary.asOf}\nCSV exported to Google Drive.` },
       },
     ],
   };
 
-  try {
-    await axios.post('https://slack.com/api/chat.postMessage', message, {
-      headers: {
-        Authorization: `Bearer ${SLACK_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    console.log('✅ Message sent to Slack');
-  } catch (error) {
-    console.error('Error sending to Slack:', error);
-    throw error;
+  const resp = await axios.post('https://slack.com/api/chat.postMessage', message, {
+    headers: {
+      Authorization: `Bearer ${SLACK_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!resp.data.ok) {
+    throw new Error(`Slack API error: ${resp.data.error}`);
   }
+  console.log('✅ Message sent to Slack');
 }
 
 /**
  * Upload CSV to Google Drive
  */
-async function uploadToGoogleDrive(cases) {
-  console.log('Uploading CSV to Google Drive...');
+async function uploadToGoogleDrive(csvText) {
+  console.log('☁️  Uploading CSV to Google Drive...');
 
   if (!GOOGLE_CREDENTIALS) {
-    console.warn('⚠️ Google credentials not configured. Skipping Google Drive upload.');
+    console.warn('⚠️  Google credentials not configured. Skipping Google Drive upload.');
     return;
   }
 
-  try {
-    const auth = new google.auth.GoogleAuth({
-      credentials: GOOGLE_CREDENTIALS,
-      scopes: ['https://www.googleapis.com/auth/drive'],
-    });
+  const auth = new google.auth.GoogleAuth({
+    credentials: GOOGLE_CREDENTIALS,
+    scopes: ['https://www.googleapis.com/auth/drive'],
+  });
 
-    const drive = google.drive({ version: 'v3', auth });
+  const drive = google.drive({ version: 'v3', auth });
 
-    const parser = new Parser();
-    const csv = parser.parse(cases);
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const fileName = `MWGL_Cases_${timestamp}.csv`;
 
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const fileName = `MWGL_Cases_${timestamp}.csv`;
+  const { Readable } = require('stream');
+  const stream = Readable.from([csvText]);
 
-    const fileMetadata = {
-      name: fileName,
-      parents: [GOOGLE_DRIVE_FOLDER_ID],
-    };
+  const response = await drive.files.create({
+    requestBody: { name: fileName, parents: [GOOGLE_DRIVE_FOLDER_ID] },
+    media: { mimeType: 'text/csv', body: stream },
+  });
 
-    const response = await drive.files.create(
-      {
-        resource: fileMetadata,
-        media: {
-          mimeType: 'text/csv',
-          body: csv,
-        },
-      },
-      { maxContentLength: Infinity }
-    );
-
-    console.log(`✅ CSV uploaded to Google Drive: ${response.data.name} (ID: ${response.data.id})`);
-  } catch (error) {
-    console.error('Error uploading to Google Drive:', error);
-    throw error;
-  }
-}
-
-/**
- * Helper: attempt Salesforce login if on login page
- */
-async function loginIfRequired(page) {
-  const currentUrl = page.url();
-  if (currentUrl.includes('login') || (currentUrl.includes('salesforce.com/') && !currentUrl.includes('lightning'))) {
-    console.log('🔐 Login page detected. Authenticating...');
-    await page.waitForSelector('#username', { timeout: 15000 });
-    await page.type('#username', SF_USERNAME);
-    await page.type('#password', SF_PASSWORD);
-    await page.click('#Login');
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
-    console.log('✅ Login successful');
-    return true;
-  }
-  console.log('✅ Already authenticated');
-  return false;
+  console.log(`✅ CSV uploaded: ${response.data.name} (ID: ${response.data.id})`);
 }
 
 /**
@@ -271,50 +309,41 @@ async function main() {
   try {
     console.log('🚀 Starting MWGL Case Report workflow...');
 
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    // Step 1: Authenticate via browser and grab session cookies
+    const { browser: b, cookies } = await getSalesforceCookies();
+    browser = b;
 
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 720 });
+    // Step 2: Download report as CSV directly (no grid, no UI wait)
+    const csvText = await downloadReportCsv(cookies);
 
-    // Step 1: Navigate to SF root to trigger login if needed
-    console.log('🔐 Navigating to Salesforce login...');
-    await page.goto('https://istation.lightning.force.com', { waitUntil: 'networkidle2', timeout: 30000 });
-    await loginIfRequired(page);
+    // Step 3: Parse + normalize
+    const rawRows = parseCsv(csvText);
+    console.log(`  Parsed ${rawRows.length} raw rows from CSV`);
 
-    // Step 2: Navigate to the report
-    console.log('📍 Navigating to Salesforce report...');
-    await page.goto(REPORT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-
-    // Step 3: If report nav triggered another login redirect, re-auth
-    const didReAuth = await loginIfRequired(page);
-    if (didReAuth) {
-      console.log('📍 Re-navigating to report after re-auth...');
-      await page.goto(REPORT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+    // Debug: log headers from first row to verify column mapping
+    if (rawRows.length > 0) {
+      console.log(`  CSV columns: ${Object.keys(rawRows[0]).join(', ')}`);
     }
 
-    // Step 4: Give Lightning extra time to hydrate the report grid
-    console.log('⏳ Waiting for Lightning report to hydrate...');
-    await new Promise(resolve => setTimeout(resolve, 5000));
-
-    // Extract data
-    const allCases = await extractCaseData(page);
+    const allCases = rawRows.map(normalizeCase);
     const filteredCases = filterCases(allCases);
     const summary = generateSummary(filteredCases);
 
     console.log(`\n📊 Summary:`);
-    console.log(`  Total cases: ${summary.totalCases}`);
+    console.log(`  Total active cases: ${summary.totalCases}`);
     console.log(`  By priority: ${JSON.stringify(summary.byPriority)}`);
     console.log(`  By status: ${JSON.stringify(summary.byStatus)}`);
 
+    // Step 4: Send to Slack
     await sendToSlack(filteredCases, summary);
-    await uploadToGoogleDrive(filteredCases);
+
+    // Step 5: Upload raw CSV to Google Drive
+    await uploadToGoogleDrive(csvText);
 
     console.log('\n✅ Workflow completed successfully!');
   } catch (error) {
-    console.error('❌ Workflow failed:', error);
+    console.error('❌ Workflow failed:', error.message);
+    console.error(error.stack);
     process.exit(1);
   } finally {
     if (browser) {
