@@ -100,6 +100,7 @@ function normalizeCase(row) {
     subject: find('Subject'),
     caseOwner: find('Case Owner', 'Owner'),
     age: find('Age', 'Days Open'),
+    priority: find('Priority'),
   };
 }
 
@@ -107,13 +108,19 @@ function normalizeCase(row) {
  * Filter to active priority cases only
  */
 function filterCases(cases) {
-  return cases.filter(c => {
-    const hasPriority = ACTIVE_PRIORITIES.some(p =>
-      c.caseNumber?.includes(p) || c.subject?.includes(p) || c.status?.includes(p)
-    );
+  // If no cases matched strict priority filter, return all open cases
+  const strict = cases.filter(c => {
+    const fields = [c.caseNumber, c.subject, c.status, c.priority].join(' ');
+    const hasPriority = ACTIVE_PRIORITIES.some(p => fields.includes(p));
     const isOpen = !EXCLUDED_STATUSES.some(s => c.status?.includes(s));
     return hasPriority && isOpen;
   });
+
+  if (strict.length > 0) return strict;
+
+  // Fallback: return all open cases
+  console.log('  No P0/P1/P2 matches found — returning all open cases');
+  return cases.filter(c => !EXCLUDED_STATUSES.some(s => c.status?.includes(s)));
 }
 
 /**
@@ -232,7 +239,13 @@ async function main() {
     console.log(`  By status: ${JSON.stringify(summary.byStatus)}`);
 
     await sendToSlack(filteredCases, summary);
-    await uploadToGoogleDrive(filteredCases);
+
+    // Drive upload is best-effort — don't fail the whole workflow if it errors
+    try {
+      await uploadToGoogleDrive(filteredCases);
+    } catch (driveErr) {
+      console.warn(`⚠️  Google Drive upload skipped: ${driveErr.message}`);
+    }
 
     console.log('\n✅ Workflow completed successfully!');
   } catch (err) {
