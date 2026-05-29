@@ -31,6 +31,7 @@ jobs:
 
       - name: Upload logs
         if: always()
+        id: upload-logs
         uses: actions/upload-artifact@v4
         with:
           name: mwgl-workflow-logs
@@ -41,3 +42,42 @@ jobs:
             dashboard/MWGL_Cases_*.html
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Post artifact link to Slack
+        if: success()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          ARTIFACT_ID: ${{ steps.upload-logs.outputs.artifact-id }}
+        run: |
+          DATE=$(date +'%b %d, %Y %I:%M %p CT' --date='TZ="America/Chicago"')
+          ARTIFACT_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}/artifacts/${ARTIFACT_ID}"
+          DIRECT_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+          curl -s -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"channel\": \"${SLACK_CHANNEL}\",
+              \"blocks\": [
+                {
+                  \"type\": \"section\",
+                  \"text\": {
+                    \"type\": \"mrkdwn\",
+                    \"text\": \"📊 *MWGL Case Report — ${DATE}*\nYour HTML dashboard is ready. Click below to download and open in Chrome.\"
+                  }
+                },
+                {
+                  \"type\": \"actions\",
+                  \"elements\": [
+                    {
+                      \"type\": \"button\",
+                      \"text\": { \"type\": \"plain_text\", \"text\": \"⬇️ Download HTML Report\" },
+                      \"url\": \"${DIRECT_URL}\",
+                      \"style\": \"primary\"
+                    }
+                  ]
+                }
+              ]
+            }"
