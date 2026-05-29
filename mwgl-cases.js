@@ -99,6 +99,7 @@ function normalizeCase(row) {
     accountState: find('State', 'Billing State'),
     dateTimeOpened: find('Date/Time Opened', 'Opened', 'Created'),
     caseNumber: find('Case Number', 'Number'),
+    caseId: find('Case ID', 'Case Id', 'CASE_ID', 'Id'),
     subject: find('Subject'),
     caseOwner: find('Case Owner', 'Owner'),
     age: find('Age', 'Days Open'),
@@ -292,7 +293,7 @@ function generateHTML(cases, summary) {
       const badgeClass = s.includes('new') ? 'bn' : s.includes('open') ? 'bo' : s.includes('wait') ? 'bw' : s.includes('pend') ? 'bp' : s.includes('escal') ? 'be' : 'bd';
       return `<tr data-priority="${priority}">
         <td><span class="badge ${priorityClass}">${priorityLabel}</span></td>
-        <td class="cn">${c.caseNumber || '—'}</td>
+        <td class="cn"><a href="https://istation.lightning.force.com/lightning/r/Case/${c.caseId || ''}/view" target="_blank" style="color:var(--accent);text-decoration:none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${c.caseNumber || '—'}</a></td>
         <td>${c.accountName || '—'}</td>
         <td class="sub" title="${(c.subject || '').replace(/"/g, '')}">${c.subject || '—'}</td>
         <td><span class="badge ${badgeClass}">${c.status || '—'}</span></td>
