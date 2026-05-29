@@ -1,12 +1,14 @@
 name: MWGL Case Report
 
 on:
-  workflow_dispatch:  # Allow manual trigger
+  schedule:
+    - cron: '50 13 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   mwgl-cases:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -17,8 +19,7 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: |
-          npm install axios json2csv googleapis
+        run: npm install axios json2csv googleapis
 
       - name: Run MWGL Case Report
         env:
@@ -26,35 +27,27 @@ jobs:
           SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
           GOOGLE_DRIVE_CREDENTIALS: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
           SF_SESSION_ID: ${{ secrets.SF_SESSION_ID }}
-        run: |
-          node mwgl-cases.js
+        run: node mwgl-cases.js
 
-      - name: Upload logs
-        if: always()
-        id: upload-logs
+      - name: Upload HTML report as artifact
+        if: success()
+        id: upload-artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mwgl-workflow-logs
-          path: |
-            *.log
-            *.csv
-            *.png
-            dashboard/MWGL_Cases_*.html
+          name: MWGL-Case-Report
+          path: dashboard/MWGL_Cases_*.html
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Post artifact link to Slack
+      - name: Post download link to Slack
         if: success()
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
-          ARTIFACT_ID: ${{ steps.upload-logs.outputs.artifact-id }}
         run: |
-          DATE=$(date +'%b %d, %Y %I:%M %p CT' --date='TZ="America/Chicago"')
-          ARTIFACT_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}/artifacts/${ARTIFACT_ID}"
-          DIRECT_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+          REPORT_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
           curl -s -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
             -H "Content-Type: application/json" \
@@ -65,7 +58,7 @@ jobs:
                   \"type\": \"section\",
                   \"text\": {
                     \"type\": \"mrkdwn\",
-                    \"text\": \"📊 *MWGL Case Report — ${DATE}*\nYour HTML dashboard is ready. Click below to download and open in Chrome.\"
+                    \"text\": \"📊 *MWGL HTML Report Ready*\n1. Click the button below\n2. Scroll to *Artifacts* at the bottom\n3. Click *MWGL-Case-Report* to download\n4. Unzip and open the *.html* file in Chrome\"
                   }
                 },
                 {
@@ -73,8 +66,8 @@ jobs:
                   \"elements\": [
                     {
                       \"type\": \"button\",
-                      \"text\": { \"type\": \"plain_text\", \"text\": \"⬇️ Download HTML Report\" },
-                      \"url\": \"${DIRECT_URL}\",
+                      \"text\": { \"type\": \"plain_text\", \"text\": \"⬇️ Download HTML Report\", \"emoji\": true },
+                      \"url\": \"${REPORT_URL}\",
                       \"style\": \"primary\"
                     }
                   ]
