@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-29T20:17:38.643Z",
+  "generatedAt": "2026-05-29T20:51:47.787Z",
   "summary": {
     "totalCases": 68,
     "byPriority": {
@@ -9,17 +9,17 @@
     },
     "byStatus": {
       "Waiting on Customer": 13,
-      "New": 27,
+      "New": 28,
       "Email Update": 6,
-      "Re-opened": 4,
       "Escalated to Development": 7,
+      "Re-opened": 3,
       "In Progress": 3,
       "Closed / Complete": 5,
       "Escalated from Bot": 1,
       "Escalated": 1,
       "Merged": 1
     },
-    "asOf": "5/29/2026, 3:17:38 PM"
+    "asOf": "5/29/2026, 3:51:47 PM"
   },
   "cases": [
     {
@@ -32,6 +32,18 @@
       "subject": "Accessing the Reading Risk report",
       "caseOwner": "Alan Hutchings",
       "age": "3",
+      "priority": "Medium"
+    },
+    {
+      "status": "New",
+      "accountName": "Houghton Mifflin Company",
+      "accountState": "IL",
+      "dateTimeOpened": "5/29/2026 3:23 PM",
+      "caseNumber": "01063449",
+      "caseId": "500Ub00000oQlkt",
+      "subject": "HMH Credits June 2026: RE: Amira Order Report",
+      "caseOwner": "MiMi Stout",
+      "age": "0",
       "priority": "Medium"
     },
     {
@@ -80,18 +92,6 @@
       "subject": "Trial Request for The Greater Dayton School",
       "caseOwner": "Julie Kalinowski",
       "age": "85",
-      "priority": "Medium"
-    },
-    {
-      "status": "Re-opened",
-      "accountName": "Central Stickney School District 110",
-      "accountState": "IL",
-      "dateTimeOpened": "5/27/2026 1:32 PM",
-      "caseNumber": "01063197",
-      "caseId": "500Ub00000oFBpf",
-      "subject": "Invoice",
-      "caseOwner": "Danae Denison",
-      "age": "2",
       "priority": "Medium"
     },
     {
@@ -429,6 +429,18 @@
       "caseOwner": "Jin Tak",
       "age": "74",
       "priority": "Medium"
+    },
+    {
+      "status": "New",
+      "accountName": "Central Stickney School District 110",
+      "accountState": "IL",
+      "dateTimeOpened": "5/29/2026 2:56 PM",
+      "caseNumber": "01063439",
+      "caseId": "500Ub00000oQegA",
+      "subject": "Closed Won opportunity for Central Stickney School District 110",
+      "caseOwner": "Beth Miller",
+      "age": "0",
+      "priority": "High"
     },
     {
       "status": "In Progress",
@@ -825,18 +837,6 @@
       "caseOwner": "Amira Automated Support",
       "age": "144",
       "priority": "Medium"
-    },
-    {
-      "status": "New",
-      "accountName": "Central Stickney School District 110",
-      "accountState": "IL",
-      "dateTimeOpened": "5/29/2026 2:56 PM",
-      "caseNumber": "01063439",
-      "caseId": "500Ub00000oQegA",
-      "subject": "Closed Won opportunity for Central Stickney School District 110",
-      "caseOwner": "Pod - Scaled Success",
-      "age": "0",
-      "priority": "High"
     }
   ]
 }
