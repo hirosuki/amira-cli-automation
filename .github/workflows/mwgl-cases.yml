@@ -46,8 +46,17 @@ jobs:
           SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          REPORT_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+          # Get artifact download URL directly from GitHub API
+          ARTIFACT_URL=$(curl -s \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/actions/runs/${RUN_ID}/artifacts" \
+            | python3 -c "import sys,json; artifacts=json.load(sys.stdin)['artifacts']; print(next((a['archive_download_url'] for a in artifacts if a['name']=='MWGL-Case-Report'), ''))")
+
+          DATE=$(TZ="America/Chicago" date +'%b %d, %Y %I:%M %p CT')
+
           curl -s -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
             -H "Content-Type: application/json" \
@@ -58,7 +67,7 @@ jobs:
                   \"type\": \"section\",
                   \"text\": {
                     \"type\": \"mrkdwn\",
-                    \"text\": \"📊 *MWGL HTML Report Ready*\n1. Click the button below\n2. Scroll to *Artifacts* at the bottom\n3. Click *MWGL-Case-Report* to download\n4. Unzip and open the *.html* file in Chrome\"
+                    \"text\": \"📊 *MWGL HTML Report Ready — ${DATE}*\nClick to download the HTML dashboard. Unzip and open in Chrome.\"
                   }
                 },
                 {
@@ -67,7 +76,7 @@ jobs:
                     {
                       \"type\": \"button\",
                       \"text\": { \"type\": \"plain_text\", \"text\": \"⬇️ Download HTML Report\", \"emoji\": true },
-                      \"url\": \"${REPORT_URL}\",
+                      \"url\": \"${ARTIFACT_URL}\",
                       \"style\": \"primary\"
                     }
                   ]
