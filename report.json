@@ -1,8 +1,12 @@
 {
-  "generatedAt": "2026-05-29T20:06:35.110Z",
+  "generatedAt": "2026-05-29T20:10:22.429Z",
   "summary": {
     "totalCases": 68,
-    "byPriority": {},
+    "byPriority": {
+      "P0": 44,
+      "P1": 7,
+      "P2": 17
+    },
     "byStatus": {
       "Waiting on Customer": 13,
       "New": 27,
@@ -15,7 +19,7 @@
       "Escalated": 1,
       "Merged": 1
     },
-    "asOf": "5/29/2026, 3:06:34 PM"
+    "asOf": "5/29/2026, 3:10:22 PM"
   },
   "cases": [
     {
