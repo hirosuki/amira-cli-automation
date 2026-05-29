@@ -38,4 +38,5 @@ jobs:
           path: |
             *.log
             *.csv
+            *.png
           retention-days: 7

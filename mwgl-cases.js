@@ -110,6 +110,22 @@ async function getSalesforceCookies() {
     console.log(`  Login page URL: ${page.url()}`);
 
     // Fill credentials
+    // Dump page state before waiting so we can debug selector issues
+    const preWaitUrl = page.url();
+    const preWaitTitle = await page.title();
+    console.log(`  Pre-selector URL: ${preWaitUrl}`);
+    console.log(`  Pre-selector title: ${preWaitTitle}`);
+
+    // Take a screenshot to see what the page looks like in CI
+    await page.screenshot({ path: 'login-page.png', fullPage: false });
+    console.log('  Screenshot saved: login-page.png');
+
+    // Dump page HTML for selector debugging
+    const pageHtml = await page.content();
+    const inputMatches = pageHtml.match(/<input[^>]*id="[^"]*"[^>]*>/g) || [];
+    console.log(`  Input fields found on page: ${inputMatches.length}`);
+    inputMatches.forEach(el => console.log(`    ${el.slice(0, 120)}`));
+
     await page.waitForSelector('#username', { timeout: 15000 });
     await page.type('#username', SF_USERNAME);
     await page.type('#password', SF_PASSWORD);
