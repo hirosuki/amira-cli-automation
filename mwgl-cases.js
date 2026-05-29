@@ -126,8 +126,8 @@ function filterCases(cases) {
 }
 
 /**
- * Generate summary metrics — uses Age as priority since Priority field is not in report
- * P0 = 14+ days, P1 = 7-13 days, P2 = 1-6 days
+ * Generate summary metrics using real SF Priority field
+ * SF values: Low, Medium, High, Critical (mapped to P2, P2, P1, P0)
  */
 function generateSummary(cases) {
   const byPriority = { P0: 0, P1: 0, P2: 0 };
@@ -135,26 +135,22 @@ function generateSummary(cases) {
 
   const samplePriorities = [...new Set(cases.map(c => c.priority).filter(Boolean))];
   console.log(`  Priority field values found: ${JSON.stringify(samplePriorities)}`);
-  console.log(`  Using Age-based priority: P0=14+d, P1=7-13d, P2=1-6d`);
+
+  const priorityMap = {
+    'critical': 'P0',
+    'high': 'P1',
+    'medium': 'P2',
+    'low': 'P2',
+  };
 
   cases.forEach(c => {
-    // If Priority field exists and has a value, use it
-    const rawPriority = (c.priority || '').toLowerCase().trim();
-    const priorityMap = {
-      'critical': 'P0', 'urgent': 'P0', 'p0': 'P0',
-      'high': 'P1', 'p1': 'P1',
-      'medium': 'P2', 'normal': 'P2', 'p2': 'P2',
-    };
-    const mapped = priorityMap[rawPriority];
-
+    const raw = (c.priority || '').toLowerCase().trim();
+    const mapped = priorityMap[raw];
     if (mapped) {
-      byPriority[mapped] = (byPriority[mapped] || 0) + 1;
+      byPriority[mapped]++;
     } else {
-      // Fallback: derive priority from age
-      const age = parseFloat(c.age) || 0;
-      if (age >= 14) byPriority['P0']++;
-      else if (age >= 7) byPriority['P1']++;
-      else byPriority['P2']++;
+      // No priority set — count as P2
+      byPriority['P2']++;
     }
 
     const s = c.status || 'Unknown';
@@ -273,23 +269,37 @@ function generateHTML(cases, summary) {
     <span class="oc">${n}</span></div>`;
   }).join('');
 
-  const tableRows = cases.map((c, i) => {
-    const age = parseFloat(c.age) || 0;
-    const ageClass = age >= 14 ? 'ah' : age >= 7 ? 'am' : 'al';
-    const priority = age >= 14 ? 'P0' : age >= 7 ? 'P1' : 'P2';
-    const priorityClass = age >= 14 ? 'be' : age >= 7 ? 'bp' : 'bw';
-    const s = (c.status || '').toLowerCase();
-    const badgeClass = s.includes('new') ? 'bn' : s.includes('open') ? 'bo' : s.includes('wait') ? 'bw' : s.includes('pend') ? 'bp' : s.includes('escal') ? 'be' : 'bd';
-    return `<tr data-priority="${priority}">
-      <td><span class="badge ${priorityClass}">${priority}</span></td>
-      <td class="cn">${c.caseNumber || '—'}</td>
-      <td>${c.accountName || '—'}</td>
-      <td class="sub" title="${(c.subject || '').replace(/"/g, '')}">${c.subject || '—'}</td>
-      <td><span class="badge ${badgeClass}">${c.status || '—'}</span></td>
-      <td class="own">${c.caseOwner || '—'}</td>
-      <td class="age ${ageClass}">${c.age ? c.age + 'd' : '—'}</td>
-    </tr>`;
-  }).join('');
+  const tableRows = cases
+    .sort((a, b) => {
+      // Sort by priority: P0 first, then P1, then P2
+      const pOrder = { P0: 0, P1: 1, P2: 2 };
+      const pMap = { 'critical': 'P0', 'high': 'P1', 'medium': 'P2', 'low': 'P2' };
+      const pa = pOrder[pMap[(a.priority||'').toLowerCase()] || 'P2'];
+      const pb = pOrder[pMap[(b.priority||'').toLowerCase()] || 'P2'];
+      if (pa !== pb) return pa - pb;
+      // Secondary sort: age descending
+      return (parseFloat(b.age)||0) - (parseFloat(a.age)||0);
+    })
+    .map((c) => {
+      const age = parseFloat(c.age) || 0;
+      const ageClass = age >= 14 ? 'ah' : age >= 7 ? 'am' : 'al';
+      const rawP = (c.priority || '').toLowerCase();
+      const pMap = { 'critical': 'P0', 'high': 'P1', 'medium': 'P2', 'low': 'P2' };
+      const priority = pMap[rawP] || 'P2';
+      const priorityClass = priority === 'P0' ? 'be' : priority === 'P1' ? 'bp' : 'bw';
+      const priorityLabel = c.priority || '—';
+      const s = (c.status || '').toLowerCase();
+      const badgeClass = s.includes('new') ? 'bn' : s.includes('open') ? 'bo' : s.includes('wait') ? 'bw' : s.includes('pend') ? 'bp' : s.includes('escal') ? 'be' : 'bd';
+      return `<tr data-priority="${priority}">
+        <td><span class="badge ${priorityClass}">${priorityLabel}</span></td>
+        <td class="cn">${c.caseNumber || '—'}</td>
+        <td>${c.accountName || '—'}</td>
+        <td class="sub" title="${(c.subject || '').replace(/"/g, '')}">${c.subject || '—'}</td>
+        <td><span class="badge ${badgeClass}">${c.status || '—'}</span></td>
+        <td class="own">${c.caseOwner || '—'}</td>
+        <td class="age ${ageClass}">${c.age ? c.age + 'd' : '—'}</td>
+      </tr>`;
+    }).join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -358,9 +368,9 @@ footer{border-top:1px solid var(--border);padding:20px 0 0;display:flex;align-it
 </header>
 <div class="kpi-row">
   <div class="kpi total"><div class="kpi-label">Total Cases</div><div class="kpi-value">${summary.totalCases}</div></div>
-  <div class="kpi p0"><div class="kpi-label">P0 · 14+ Days</div><div class="kpi-value">${summary.byPriority?.P0 || 0}</div></div>
-  <div class="kpi p1"><div class="kpi-label">P1 · 7-13 Days</div><div class="kpi-value">${summary.byPriority?.P1 || 0}</div></div>
-  <div class="kpi p2"><div class="kpi-label">P2 · 1-6 Days</div><div class="kpi-value">${summary.byPriority?.P2 || 0}</div></div>
+  <div class="kpi p0"><div class="kpi-label">P0 Critical</div><div class="kpi-value">${summary.byPriority?.P0 || 0}</div></div>
+  <div class="kpi p1"><div class="kpi-label">P1 High</div><div class="kpi-value">${summary.byPriority?.P1 || 0}</div></div>
+  <div class="kpi p2"><div class="kpi-label">P2 Med/Low</div><div class="kpi-value">${summary.byPriority?.P2 || 0}</div></div>
   <div class="kpi avg"><div class="kpi-label">Avg Age (Days)</div><div class="kpi-value">${avgAge}</div></div>
 </div>
 <div class="main-grid">
