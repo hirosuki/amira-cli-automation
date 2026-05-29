@@ -126,37 +126,35 @@ function filterCases(cases) {
 }
 
 /**
- * Generate summary metrics
+ * Generate summary metrics — uses Age as priority since Priority field is not in report
+ * P0 = 14+ days, P1 = 7-13 days, P2 = 1-6 days
  */
 function generateSummary(cases) {
-  const byPriority = {};
+  const byPriority = { P0: 0, P1: 0, P2: 0 };
   const byStatus = {};
 
-  // Log actual priority values from first few cases for debugging
   const samplePriorities = [...new Set(cases.map(c => c.priority).filter(Boolean))];
-  console.log(`  Priority values found: ${JSON.stringify(samplePriorities)}`);
-
-  // Map SF priority labels → P0/P1/P2
-  const priorityMap = {
-    'critical': 'P0', 'urgent': 'P0', 'p0': 'P0',
-    'high': 'P1', 'p1': 'P1',
-    'medium': 'P2', 'normal': 'P2', 'p2': 'P2',
-    'low': 'P3',
-  };
+  console.log(`  Priority field values found: ${JSON.stringify(samplePriorities)}`);
+  console.log(`  Using Age-based priority: P0=14+d, P1=7-13d, P2=1-6d`);
 
   cases.forEach(c => {
-    // Map priority field value first
+    // If Priority field exists and has a value, use it
     const rawPriority = (c.priority || '').toLowerCase().trim();
-    const mappedPriority = priorityMap[rawPriority];
-    if (mappedPriority && ['P0','P1','P2'].includes(mappedPriority)) {
-      byPriority[mappedPriority] = (byPriority[mappedPriority] || 0) + 1;
+    const priorityMap = {
+      'critical': 'P0', 'urgent': 'P0', 'p0': 'P0',
+      'high': 'P1', 'p1': 'P1',
+      'medium': 'P2', 'normal': 'P2', 'p2': 'P2',
+    };
+    const mapped = priorityMap[rawPriority];
+
+    if (mapped) {
+      byPriority[mapped] = (byPriority[mapped] || 0) + 1;
     } else {
-      // Fallback: check if P0/P1/P2 appears in other fields
-      ACTIVE_PRIORITIES.forEach(p => {
-        if (c.caseNumber?.includes(p) || c.subject?.includes(p)) {
-          byPriority[p] = (byPriority[p] || 0) + 1;
-        }
-      });
+      // Fallback: derive priority from age
+      const age = parseFloat(c.age) || 0;
+      if (age >= 14) byPriority['P0']++;
+      else if (age >= 7) byPriority['P1']++;
+      else byPriority['P2']++;
     }
 
     const s = c.status || 'Unknown';
@@ -278,9 +276,12 @@ function generateHTML(cases, summary) {
   const tableRows = cases.map((c, i) => {
     const age = parseFloat(c.age) || 0;
     const ageClass = age >= 14 ? 'ah' : age >= 7 ? 'am' : 'al';
+    const priority = age >= 14 ? 'P0' : age >= 7 ? 'P1' : 'P2';
+    const priorityClass = age >= 14 ? 'be' : age >= 7 ? 'bp' : 'bw';
     const s = (c.status || '').toLowerCase();
     const badgeClass = s.includes('new') ? 'bn' : s.includes('open') ? 'bo' : s.includes('wait') ? 'bw' : s.includes('pend') ? 'bp' : s.includes('escal') ? 'be' : 'bd';
-    return `<tr>
+    return `<tr data-priority="${priority}">
+      <td><span class="badge ${priorityClass}">${priority}</span></td>
       <td class="cn">${c.caseNumber || '—'}</td>
       <td>${c.accountName || '—'}</td>
       <td class="sub" title="${(c.subject || '').replace(/"/g, '')}">${c.subject || '—'}</td>
@@ -357,9 +358,9 @@ footer{border-top:1px solid var(--border);padding:20px 0 0;display:flex;align-it
 </header>
 <div class="kpi-row">
   <div class="kpi total"><div class="kpi-label">Total Cases</div><div class="kpi-value">${summary.totalCases}</div></div>
-  <div class="kpi p0"><div class="kpi-label">P0 Critical</div><div class="kpi-value">${summary.byPriority?.P0 || 0}</div></div>
-  <div class="kpi p1"><div class="kpi-label">P1 High</div><div class="kpi-value">${summary.byPriority?.P1 || 0}</div></div>
-  <div class="kpi p2"><div class="kpi-label">P2 Medium</div><div class="kpi-value">${summary.byPriority?.P2 || 0}</div></div>
+  <div class="kpi p0"><div class="kpi-label">P0 · 14+ Days</div><div class="kpi-value">${summary.byPriority?.P0 || 0}</div></div>
+  <div class="kpi p1"><div class="kpi-label">P1 · 7-13 Days</div><div class="kpi-value">${summary.byPriority?.P1 || 0}</div></div>
+  <div class="kpi p2"><div class="kpi-label">P2 · 1-6 Days</div><div class="kpi-value">${summary.byPriority?.P2 || 0}</div></div>
   <div class="kpi avg"><div class="kpi-label">Avg Age (Days)</div><div class="kpi-value">${avgAge}</div></div>
 </div>
 <div class="main-grid">
@@ -375,7 +376,7 @@ footer{border-top:1px solid var(--border);padding:20px 0 0;display:flex;align-it
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>Case #</th><th>Account</th><th>Subject</th><th>Status</th><th>Owner</th><th>Age</th>
+          <th>Priority</th><th>Case #</th><th>Account</th><th>Subject</th><th>Status</th><th>Owner</th><th>Age</th>
         </tr></thead>
         <tbody id="tbody">${tableRows}</tbody>
       </table>
@@ -405,7 +406,8 @@ function filterTable() {
   let count = 0;
   ROWS.forEach(tr => {
     const txt = tr.textContent.toLowerCase();
-    const matchF = activeF === 'all' || txt.includes(activeF.toLowerCase());
+    const pri = tr.dataset.priority || '';
+    const matchF = activeF === 'all' || pri === activeF;
     const matchQ = !q || txt.includes(q);
     const show = matchF && matchQ;
     tr.style.display = show ? '' : 'none';
