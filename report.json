@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-05-29T20:10:22.429Z",
+  "generatedAt": "2026-05-29T20:15:46.145Z",
   "summary": {
     "totalCases": 68,
     "byPriority": {
-      "P0": 44,
-      "P1": 7,
-      "P2": 17
+      "P0": 5,
+      "P1": 8,
+      "P2": 55
     },
     "byStatus": {
       "Waiting on Customer": 13,
@@ -19,7 +19,7 @@
       "Escalated": 1,
       "Merged": 1
     },
-    "asOf": "5/29/2026, 3:10:22 PM"
+    "asOf": "5/29/2026, 3:15:45 PM"
   },
   "cases": [
     {
@@ -31,7 +31,7 @@
       "subject": "Accessing the Reading Risk report",
       "caseOwner": "Alan Hutchings",
       "age": "3",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -42,7 +42,7 @@
       "subject": "Kris Shared Important Document for Review",
       "caseOwner": "MiMi Stout",
       "age": "52",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -53,7 +53,7 @@
       "subject": "Trial Request for Van Buren Public Schools",
       "caseOwner": "Julie Kalinowski",
       "age": "17",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -64,7 +64,7 @@
       "subject": "Trial Request for Acero Schools Chicago Charter Network District Office",
       "caseOwner": "Julie Kalinowski",
       "age": "53",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Email Update",
@@ -75,7 +75,7 @@
       "subject": "Trial Request for The Greater Dayton School",
       "caseOwner": "Julie Kalinowski",
       "age": "85",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Re-opened",
@@ -86,7 +86,7 @@
       "subject": "Invoice",
       "caseOwner": "Danae Denison",
       "age": "2",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Waiting on Customer",
@@ -97,7 +97,7 @@
       "subject": "Student access over Summer",
       "caseOwner": "Calvin Xu",
       "age": "1",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Waiting on Customer",
@@ -108,7 +108,7 @@
       "subject": "Amira Support: QR CODE",
       "caseOwner": "Calvin Xu",
       "age": "2",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Waiting on Customer",
@@ -119,7 +119,7 @@
       "subject": "Re: Welcome to Amira Learning. Log in today to get started.",
       "caseOwner": "Calvin Xu",
       "age": "2",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Waiting on Customer",
@@ -130,7 +130,7 @@
       "subject": "Amira Purchasing for Missouri school district.",
       "caseOwner": "Calvin Xu",
       "age": "7",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Escalated to Development",
@@ -141,7 +141,7 @@
       "subject": "Bay City - Adjusted WCPM - District Wide Review and Update",
       "caseOwner": "Calvin Xu",
       "age": "8",
-      "priority": ""
+      "priority": "Critical"
     },
     {
       "status": "Escalated to Development",
@@ -152,7 +152,7 @@
       "subject": "Amira Learning: Usage Report of Unenrolled Students for Detroit",
       "caseOwner": "Calvin Xu",
       "age": "66",
-      "priority": ""
+      "priority": "Critical"
     },
     {
       "status": "Re-opened",
@@ -163,7 +163,7 @@
       "subject": "Spanish Only Tutor Option",
       "caseOwner": "Brigitte Taylor",
       "age": "9",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -174,7 +174,7 @@
       "subject": "Trial Request for Saint Croix Academy of Virtual Education",
       "caseOwner": "Ricardo Ruiz",
       "age": "142",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -185,7 +185,7 @@
       "subject": "Trial Request for Canby Elementary",
       "caseOwner": "Ricardo Ruiz",
       "age": "142",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Waiting on Customer",
@@ -196,7 +196,7 @@
       "subject": "LOGIN",
       "caseOwner": "Liz Affeldt",
       "age": "0",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "In Progress",
@@ -207,7 +207,7 @@
       "subject": "Chilhowee R-IV School District - Amira rostering",
       "caseOwner": "Josh Smith",
       "age": "0",
-      "priority": ""
+      "priority": "High"
     },
     {
       "status": "Closed / Complete",
@@ -218,7 +218,7 @@
       "subject": "CPS admin Import 5/29/2026",
       "caseOwner": "Jin Tak",
       "age": "0",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Closed / Complete",
@@ -229,7 +229,7 @@
       "subject": "CPS admin Import 5/28/2026",
       "caseOwner": "Jin Tak",
       "age": "1",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Closed / Complete",
@@ -240,7 +240,7 @@
       "subject": "CPS admin Import 5/27/2026",
       "caseOwner": "Jin Tak",
       "age": "2",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Email Update",
@@ -251,7 +251,7 @@
       "subject": "Amira eoy assessment",
       "caseOwner": "Jin Tak",
       "age": "3",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Closed / Complete",
@@ -262,7 +262,7 @@
       "subject": "CPS admin Import 5/23/2026",
       "caseOwner": "Jin Tak",
       "age": "6",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Waiting on Customer",
@@ -273,7 +273,7 @@
       "subject": "AUTOCREATED IN CHAT",
       "caseOwner": "Jin Tak",
       "age": "7",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Closed / Complete",
@@ -284,7 +284,7 @@
       "subject": "CPS admin Import 5/22/2026",
       "caseOwner": "Jin Tak",
       "age": "7",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -295,7 +295,7 @@
       "subject": "Spanish books on Amira",
       "caseOwner": "Jin Tak",
       "age": "9",
-      "priority": ""
+      "priority": "High"
     },
     {
       "status": "Escalated from Bot",
@@ -306,7 +306,7 @@
       "subject": "Question About AMIRA Data Accuracy",
       "caseOwner": "Jin Tak",
       "age": "17",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Escalated to Development",
@@ -317,7 +317,7 @@
       "subject": "Adjusted WCPM - EoY Assessment - Bay City",
       "caseOwner": "Jin Tak",
       "age": "22",
-      "priority": ""
+      "priority": "Critical"
     },
     {
       "status": "Waiting on Customer",
@@ -328,7 +328,7 @@
       "subject": "Amira Learning: issue with Spanish Assessment / missing picture",
       "caseOwner": "Jin Tak",
       "age": "24",
-      "priority": ""
+      "priority": "Critical"
     },
     {
       "status": "Escalated",
@@ -339,7 +339,7 @@
       "subject": "Fwd: Amira Concerns",
       "caseOwner": "Jin Tak",
       "age": "25",
-      "priority": ""
+      "priority": "Critical"
     },
     {
       "status": "Waiting on Customer",
@@ -350,7 +350,7 @@
       "subject": "Spanish Assessment Box \"?\" mark error",
       "caseOwner": "Jin Tak",
       "age": "31",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Email Update",
@@ -361,7 +361,7 @@
       "subject": "Amira Summer School Rostering",
       "caseOwner": "Jin Tak",
       "age": "32",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Escalated to Development",
@@ -372,7 +372,7 @@
       "subject": "Issue with Spanish Resource PDFs Not Opening",
       "caseOwner": "Jin Tak",
       "age": "43",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Escalated to Development",
@@ -383,7 +383,7 @@
       "subject": "-",
       "caseOwner": "Jin Tak",
       "age": "45",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Escalated to Development",
@@ -394,7 +394,7 @@
       "subject": "CPS Restart Activity button does not work",
       "caseOwner": "Jin Tak",
       "age": "74",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "In Progress",
@@ -405,7 +405,7 @@
       "subject": "RE: GNS Invitation to Take Part in Amira Reading Tool Trial - request by chairman",
       "caseOwner": "Aurines Arias",
       "age": "16",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "In Progress",
@@ -416,7 +416,7 @@
       "subject": "Student Account",
       "caseOwner": "Valery Ferrera",
       "age": "46",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Re-opened",
@@ -427,7 +427,7 @@
       "subject": "Help navigating website",
       "caseOwner": "Lynette Johnson",
       "age": "35",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Email Update",
@@ -438,7 +438,7 @@
       "subject": "Amira Learning Invoice for PRSD 143.5 School District",
       "caseOwner": "Lynette Johnson",
       "age": "46",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Email Update",
@@ -449,7 +449,7 @@
       "subject": "Trainings for Amira ISIP Assessments",
       "caseOwner": "Lynette Johnson",
       "age": "49",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Email Update",
@@ -460,7 +460,7 @@
       "subject": "Fwd: SY27 Amira Learning Quote",
       "caseOwner": "Lynette Johnson",
       "age": "92",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Re-opened",
@@ -471,7 +471,7 @@
       "subject": "Fwd: Your Istation-Amira Contract, signature needed",
       "caseOwner": "Lynette Johnson",
       "age": "101",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Escalated to Development",
@@ -482,7 +482,7 @@
       "subject": "benchmark report not working",
       "caseOwner": "Mauro Arias",
       "age": "17",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Waiting on Customer",
@@ -493,7 +493,7 @@
       "subject": "San Augstine",
       "caseOwner": "Ashton Morrison",
       "age": "8",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -504,7 +504,7 @@
       "subject": "Amira Error",
       "caseOwner": "Support",
       "age": "59",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -515,7 +515,7 @@
       "subject": "Cancelation/Reversal",
       "caseOwner": "Subscriptions",
       "age": "42",
-      "priority": ""
+      "priority": "High"
     },
     {
       "status": "New",
@@ -526,7 +526,7 @@
       "subject": "Cancelation/Reversal",
       "caseOwner": "Subscriptions",
       "age": "122",
-      "priority": ""
+      "priority": "High"
     },
     {
       "status": "New",
@@ -537,7 +537,7 @@
       "subject": "Cancelation/Reversal",
       "caseOwner": "Subscriptions",
       "age": "122",
-      "priority": ""
+      "priority": "High"
     },
     {
       "status": "New",
@@ -548,7 +548,7 @@
       "subject": "Cancelation/Reversal",
       "caseOwner": "Subscriptions",
       "age": "136",
-      "priority": ""
+      "priority": "High"
     },
     {
       "status": "New",
@@ -559,7 +559,7 @@
       "subject": "HMH Credits April 2026: RE: Amira Order Report",
       "caseOwner": "SOS Direct",
       "age": "58",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -570,7 +570,7 @@
       "subject": "HMH Credits March 2026: RE: Amira Order Report",
       "caseOwner": "SOS Direct",
       "age": "86",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -581,7 +581,7 @@
       "subject": "HMH Credits January 2026: RE: Amira Order Report",
       "caseOwner": "SOS Direct",
       "age": "142",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -592,7 +592,7 @@
       "subject": "The ticket has been closed {189767}",
       "caseOwner": "Spam",
       "age": "144",
-      "priority": ""
+      "priority": "Low"
     },
     {
       "status": "New",
@@ -603,7 +603,7 @@
       "subject": "WISD Technology has received your request and it has been logged with a ticket ID of ##RE-172558##",
       "caseOwner": "Spam",
       "age": "144",
-      "priority": ""
+      "priority": "Low"
     },
     {
       "status": "New",
@@ -614,7 +614,7 @@
       "subject": "Ticket received: Dan, you're our inspo! {189767}",
       "caseOwner": "Spam",
       "age": "144",
-      "priority": ""
+      "priority": "Low"
     },
     {
       "status": "Waiting on Customer",
@@ -625,7 +625,7 @@
       "subject": "EOY Scoring",
       "caseOwner": "Amira Automated Support",
       "age": "3",
-      "priority": ""
+      "priority": "High"
     },
     {
       "status": "Waiting on Customer",
@@ -636,7 +636,7 @@
       "subject": "Summer Access",
       "caseOwner": "Amira Automated Support",
       "age": "3",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Waiting on Customer",
@@ -647,7 +647,7 @@
       "subject": "Share your feedback  1 minute survey",
       "caseOwner": "Amira Automated Support",
       "age": "5",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -658,7 +658,7 @@
       "subject": "Extended Time -AMIRA",
       "caseOwner": "Amira Automated Support",
       "age": "21",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -669,7 +669,7 @@
       "subject": "Early Reader Scaffold",
       "caseOwner": "Amira Automated Support",
       "age": "50",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -680,7 +680,7 @@
       "subject": "Device Support",
       "caseOwner": "Amira Automated Support",
       "age": "52",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -691,7 +691,7 @@
       "subject": "I hnt",
       "caseOwner": "Amira Automated Support",
       "age": "71",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -702,7 +702,7 @@
       "subject": "Help Question",
       "caseOwner": "Amira Automated Support",
       "age": "81",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -713,7 +713,7 @@
       "subject": "AMIRA testing",
       "caseOwner": "Amira Automated Support",
       "age": "81",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -724,7 +724,7 @@
       "subject": "Recording Data",
       "caseOwner": "Amira Automated Support",
       "age": "81",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -735,7 +735,7 @@
       "subject": "Progress monitoring still under review",
       "caseOwner": "Amira Automated Support",
       "age": "81",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "Merged",
@@ -746,7 +746,7 @@
       "subject": "Fwd: Ticket # 81440 / AKCS 201301 / Amira testing - I went through thread and found this info needed.",
       "caseOwner": "Amira Automated Support",
       "age": "0",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -757,7 +757,7 @@
       "subject": "Ticket ID ##RE-172558## has been assigned and a Technician will be in contact with you shortly.",
       "caseOwner": "Amira Automated Support",
       "age": "144",
-      "priority": ""
+      "priority": "Medium"
     },
     {
       "status": "New",
@@ -768,7 +768,7 @@
       "subject": "Closed Won opportunity for Central Stickney School District 110",
       "caseOwner": "Pod - Scaled Success",
       "age": "0",
-      "priority": ""
+      "priority": "High"
     }
   ]
 }
