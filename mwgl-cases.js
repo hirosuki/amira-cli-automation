@@ -21,14 +21,25 @@ const SF_USERNAME = process.env.SF_USERNAME;
 const SF_PASSWORD = process.env.SF_PASSWORD;
 
 /**
-* Extract case data from Salesforce report table
-*/
+ * Extract case data from Salesforce report table
+ */
 async function extractCaseData(page) {
   console.log('Extracting case data from Salesforce report...');
 
   try {
-    // Wait for the report to load - increased timeout and added fallback selector
-    await page.waitForSelector('[role="grid"]', { timeout: 60000 });
+    // Wait for the report to load — Lightning reports can take 30-60s to render
+    console.log(`  Current URL: ${page.url()}`);
+    console.log(`  Page title: ${await page.title()}`);
+
+    // Wait for grid with extended timeout + extra hydration wait
+    try {
+      await page.waitForSelector('[role="grid"]', { timeout: 60000 });
+    } catch (selectorErr) {
+      const fallbackUrl = page.url();
+      const fallbackTitle = await page.title();
+      console.error(`  Selector timed out. URL: ${fallbackUrl} | Title: ${fallbackTitle}`);
+      throw selectorErr;
+    }
 
     // Extra wait for dynamic content to fully render
     await new Promise(resolve => setTimeout(resolve, 3000));
@@ -68,11 +79,10 @@ async function extractCaseData(page) {
 }
 
 /**
-* Filter cases by priority and status
-*/
+ * Filter cases by priority and status
+ */
 function filterCases(cases) {
   return cases.filter((caseItem) => {
-    // Extract priority from case number (e.g., "P0-12345" or check status field)
     const hasPriority = ACTIVE_PRIORITIES.some(p =>
       caseItem.caseNumber?.includes(p) ||
       caseItem.subject?.includes(p) ||
@@ -88,21 +98,19 @@ function filterCases(cases) {
 }
 
 /**
-* Generate summary metrics
-*/
+ * Generate summary metrics
+ */
 function generateSummary(cases) {
   const byPriority = {};
   const byStatus = {};
 
   cases.forEach(caseItem => {
-    // Count by priority
     ACTIVE_PRIORITIES.forEach(p => {
       if (caseItem.caseNumber?.includes(p) || caseItem.status?.includes(p)) {
         byPriority[p] = (byPriority[p] || 0) + 1;
       }
     });
 
-    // Count by status
     const status = caseItem.status || 'Unknown';
     byStatus[status] = (byStatus[status] || 0) + 1;
   });
@@ -116,8 +124,8 @@ function generateSummary(cases) {
 }
 
 /**
-* Format and send summary to Slack
-*/
+ * Format and send summary to Slack
+ */
 async function sendToSlack(cases, summary) {
   console.log('Sending summary to Slack...');
 
@@ -188,8 +196,8 @@ async function sendToSlack(cases, summary) {
 }
 
 /**
-* Upload CSV to Google Drive
-*/
+ * Upload CSV to Google Drive
+ */
 async function uploadToGoogleDrive(cases) {
   console.log('Uploading CSV to Google Drive...');
 
@@ -206,14 +214,12 @@ async function uploadToGoogleDrive(cases) {
 
     const drive = google.drive({ version: 'v3', auth });
 
-    // Convert cases to CSV
     const parser = new Parser();
     const csv = parser.parse(cases);
 
     const timestamp = new Date().toISOString().slice(0, 10);
     const fileName = `MWGL_Cases_${timestamp}.csv`;
 
-    // Create file in Google Drive
     const fileMetadata = {
       name: fileName,
       parents: [GOOGLE_DRIVE_FOLDER_ID],
@@ -238,58 +244,60 @@ async function uploadToGoogleDrive(cases) {
 }
 
 /**
-* Main execution
-*/
+ * Helper: attempt Salesforce login if on login page
+ */
+async function loginIfRequired(page) {
+  const currentUrl = page.url();
+  if (currentUrl.includes('login') || (currentUrl.includes('salesforce.com/') && !currentUrl.includes('lightning'))) {
+    console.log('🔐 Login page detected. Authenticating...');
+    await page.waitForSelector('#username', { timeout: 15000 });
+    await page.type('#username', SF_USERNAME);
+    await page.type('#password', SF_PASSWORD);
+    await page.click('#Login');
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+    console.log('✅ Login successful');
+    return true;
+  }
+  console.log('✅ Already authenticated');
+  return false;
+}
+
+/**
+ * Main execution
+ */
 async function main() {
   let browser;
 
   try {
     console.log('🚀 Starting MWGL Case Report workflow...');
 
-    // Launch browser
     browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
     const page = await browser.newPage();
-
-    // Set viewport for stability
     await page.setViewport({ width: 1280, height: 720 });
 
-    // Navigate to Salesforce login page first
+    // Step 1: Navigate to SF root to trigger login if needed
     console.log('🔐 Navigating to Salesforce login...');
     await page.goto('https://istation.lightning.force.com', { waitUntil: 'networkidle2', timeout: 30000 });
+    await loginIfRequired(page);
 
-    // Perform login if login page is shown
-    const currentUrl = page.url();
-    if (currentUrl.includes('login') || currentUrl.includes('salesforce.com/') && !currentUrl.includes('lightning')) {
-      console.log('🔐 Login page detected. Authenticating...');
-      await page.waitForSelector('#username', { timeout: 15000 });
-      await page.type('#username', SF_USERNAME);
-      await page.type('#password', SF_PASSWORD);
-      await page.click('#Login');
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
-      console.log('✅ Login successful');
-    } else {
-      console.log('✅ Already authenticated or redirected');
-    }
-
-    // Now navigate to the report
+    // Step 2: Navigate to the report
     console.log('📍 Navigating to Salesforce report...');
     await page.goto(REPORT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
-    // If redirected to login again after navigating to report, re-authenticate
-    const reportUrl = page.url();
-    if (reportUrl.includes('login')) {
-      console.log('🔐 Re-authentication required after report navigation...');
-      await page.waitForSelector('#username', { timeout: 15000 });
-      await page.type('#username', SF_USERNAME);
-      await page.type('#password', SF_PASSWORD);
-      await page.click('#Login');
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+    // Step 3: If report nav triggered another login redirect, re-auth
+    const didReAuth = await loginIfRequired(page);
+    if (didReAuth) {
+      console.log('📍 Re-navigating to report after re-auth...');
       await page.goto(REPORT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
     }
+
+    // Step 4: Give Lightning extra time to hydrate the report grid
+    console.log('⏳ Waiting for Lightning report to hydrate...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
     // Extract data
     const allCases = await extractCaseData(page);
@@ -301,10 +309,7 @@ async function main() {
     console.log(`  By priority: ${JSON.stringify(summary.byPriority)}`);
     console.log(`  By status: ${JSON.stringify(summary.byStatus)}`);
 
-    // Send to Slack
     await sendToSlack(filteredCases, summary);
-
-    // Upload to Google Drive
     await uploadToGoogleDrive(filteredCases);
 
     console.log('\n✅ Workflow completed successfully!');
