@@ -45,24 +45,28 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
         run: |
-          FILE=$(ls dashboard/MWGL_Cases_*.html | head -1)
+          echo "Looking for HTML files..."
+          find . -name "MWGL_Cases_*.html" 2>/dev/null || echo "No HTML files found anywhere"
+          FILE=$(find . -name "MWGL_Cases_*.html" | head -1)
+          if [ -z "$FILE" ]; then
+            echo "ERROR: No HTML report file found"
+            exit 1
+          fi
+          echo "Found: $FILE ($(wc -c < $FILE) bytes)"
           DATE=$(TZ="America/Chicago" date +'%b %d, %Y %I:%M %p CT')
 
-          # Get upload URL from Slack
           UPLOAD=$(curl -s -X POST "https://slack.com/api/files.getUploadURLExternal" \
             -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "{\"filename\":\"MWGL_Cases_$(date +%Y-%m-%d).html\",\"length\":$(wc -c < $FILE)}")
+          echo "Upload response: $UPLOAD"
 
           UPLOAD_URL=$(echo $UPLOAD | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('upload_url',''))")
           FILE_ID=$(echo $UPLOAD | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('file_id',''))")
 
-          # Upload the file content
-          curl -s -X POST "$UPLOAD_URL" \
-            -F "filename=@$FILE"
+          curl -s -X POST "$UPLOAD_URL" -F "filename=@$FILE"
 
-          # Complete the upload and share to channel
           curl -s -X POST "https://slack.com/api/files.completeUploadExternal" \
             -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"files\":[{\"id\":\"${FILE_ID}\",\"title\":\"MWGL Case Report — ${DATE}\"}],\"channel_id\":\"${SLACK_CHANNEL_ID}\",\"initial_comment\":\"📊 *MWGL HTML Report — ${DATE}*\nOpen the file above directly in your browser — no login needed.\"}"
+            -d "{\"files\":[{\"id\":\"${FILE_ID}\",\"title\":\"MWGL Case Report — ${DATE}\"}],\"channel_id\":\"${SLACK_CHANNEL_ID}\",\"initial_comment\":\"📊 *MWGL HTML Report — ${DATE}*\nOpen the file above directly in your browser.\"}"
