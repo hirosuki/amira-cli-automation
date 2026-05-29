@@ -9,8 +9,8 @@ const { Parser } = require('json2csv');
 const REPORT_ID = '00OUb00000JDJUwMAP';
 const SF_BASE_URL = 'https://istation.lightning.force.com';
 
-// Direct CSV export URL — bypasses Lightning UI entirely, no grid wait needed
-const REPORT_EXPORT_URL = `${SF_BASE_URL}/00OUb00000JDJUwMAP?export=1&enc=UTF-8&xf=csv`;
+// Direct CSV export URL — uses classic SF domain, bypasses Lightning UI entirely
+const REPORT_EXPORT_URL = `https://istation.my.salesforce.com/${REPORT_ID}?export=1&enc=UTF-8&xf=csv`;
 
 // Priority levels
 const ACTIVE_PRIORITIES = ['P0', 'P1', 'P2'];
@@ -105,8 +105,8 @@ async function getSalesforceCookies() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
 
-    // Navigate to login page
-    await page.goto(`${SF_BASE_URL}/login`, { waitUntil: 'networkidle2', timeout: 30000 });
+    // Navigate to the correct Salesforce login domain
+    await page.goto('https://istation.my.salesforce.com/login/', { waitUntil: 'networkidle2', timeout: 30000 });
     console.log(`  Login page URL: ${page.url()}`);
 
     // Fill credentials
