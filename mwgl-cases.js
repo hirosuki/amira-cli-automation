@@ -1,6 +1,8 @@
 const { google } = require('googleapis');
 const axios = require('axios');
 const { Parser } = require('json2csv');
+const fs = require('fs');
+const path = require('path');
 
 // Salesforce config
 const REPORT_ID = '00OUb00000JDJUwMAP';
@@ -239,6 +241,17 @@ async function main() {
     console.log(`  By status: ${JSON.stringify(summary.byStatus)}`);
 
     await sendToSlack(filteredCases, summary);
+
+    // Save report.json for GitHub Pages dashboard
+    const reportJson = {
+      generatedAt: new Date().toISOString(),
+      summary,
+      cases: filteredCases,
+    };
+    const dashDir = path.join(__dirname, 'dashboard');
+    if (!fs.existsSync(dashDir)) fs.mkdirSync(dashDir);
+    fs.writeFileSync(path.join(dashDir, 'report.json'), JSON.stringify(reportJson, null, 2));
+    console.log('✅ report.json saved to dashboard/');
 
     // Drive upload is best-effort — don't fail the whole workflow if it errors
     try {
