@@ -44,25 +44,29 @@ jobs:
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
         run: |
           FILE=$(find . -name "Daily_Briefing_*.html" | head -1)
-          FILESIZE=$(wc -c < "$FILE" | tr -d ' ')
-          FILENAME=$(basename "$FILE")
+          FILENAME=$(basename "$FILE" .html)
           DATE=$(TZ="America/Chicago" date +'%b %d, %Y %I:%M %p CT')
+
+          # Zip it so Slack shows a download button instead of rendering code
+          zip "${FILENAME}.zip" "$FILE"
+          ZIPFILE="${FILENAME}.zip"
+          FILESIZE=$(wc -c < "$ZIPFILE" | tr -d ' ')
 
           UPLOAD=$(curl -s -X POST "https://slack.com/api/files.getUploadURLExternal" \
             -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
             -H "Content-Type: application/x-www-form-urlencoded" \
-            --data-urlencode "filename=${FILENAME}" \
+            --data-urlencode "filename=${FILENAME}.zip" \
             --data-urlencode "length=${FILESIZE}")
 
           UPLOAD_URL=$(echo "$UPLOAD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('upload_url',''))")
           FILE_ID=$(echo "$UPLOAD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('file_id',''))")
 
-          curl -s -X POST "$UPLOAD_URL" --data-binary @"$FILE"
+          curl -s -X POST "$UPLOAD_URL" --data-binary @"$ZIPFILE"
 
           curl -s -X POST "https://slack.com/api/files.completeUploadExternal" \
             -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"files\":[{\"id\":\"${FILE_ID}\",\"title\":\"Daily Briefing — ${DATE}\"}],\"channel_id\":\"${SLACK_CHANNEL_ID}\",\"initial_comment\":\"📋 *Daily Briefing — ${DATE}*\nDownload and open in Chrome.\"}"
+            -d "{\"files\":[{\"id\":\"${FILE_ID}\",\"title\":\"Daily Briefing — ${DATE}\"}],\"channel_id\":\"${SLACK_CHANNEL_ID}\",\"initial_comment\":\"📋 *Daily Briefing — ${DATE}*\nClick the zip to download → unzip → open in Chrome.\"}"
 
       - uses: actions/upload-artifact@v4
         if: always()
