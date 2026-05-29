@@ -37,36 +37,52 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Upload HTML to Slack
+      - name: Publish to Gist and post link to Slack
         if: success()
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
         run: |
           FILE=$(find . -name "Daily_Briefing_*.html" | head -1)
-          FILENAME=$(basename "$FILE" .html)
+          FILENAME=$(basename "$FILE")
           DATE=$(TZ="America/Chicago" date +'%b %d, %Y %I:%M %p CT')
+          CONTENT=$(cat "$FILE")
 
-          # Zip it so Slack shows a download button instead of rendering code
-          zip "${FILENAME}.zip" "$FILE"
-          ZIPFILE="${FILENAME}.zip"
-          FILESIZE=$(wc -c < "$ZIPFILE" | tr -d ' ')
+          GIST_RESPONSE=$(curl -s -X POST "https://api.github.com/gists" \
+            -H "Authorization: Bearer ${GIST_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"description\":\"Daily Briefing ${DATE}\",\"public\":true,\"files\":{\"${FILENAME}\":{\"content\":$(echo "$CONTENT" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}}}")
 
-          UPLOAD=$(curl -s -X POST "https://slack.com/api/files.getUploadURLExternal" \
-            -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
-            -H "Content-Type: application/x-www-form-urlencoded" \
-            --data-urlencode "filename=${FILENAME}.zip" \
-            --data-urlencode "length=${FILESIZE}")
+          RAW_URL=$(echo "$GIST_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); files=d.get('files',{}); f=list(files.values())[0]; print(f.get('raw_url',''))" 2>/dev/null || echo "")
+          PREVIEW_URL="https://htmlpreview.github.io/?${RAW_URL}"
 
-          UPLOAD_URL=$(echo "$UPLOAD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('upload_url',''))")
-          FILE_ID=$(echo "$UPLOAD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('file_id',''))")
-
-          curl -s -X POST "$UPLOAD_URL" --data-binary @"$ZIPFILE"
-
-          curl -s -X POST "https://slack.com/api/files.completeUploadExternal" \
+          curl -s -X POST "https://slack.com/api/chat.postMessage" \
             -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"files\":[{\"id\":\"${FILE_ID}\",\"title\":\"Daily Briefing — ${DATE}\"}],\"channel_id\":\"${SLACK_CHANNEL_ID}\",\"initial_comment\":\"📋 *Daily Briefing — ${DATE}*\nClick the zip to download → unzip → open in Chrome.\"}"
+            -d "{
+              \"channel\": \"${SLACK_CHANNEL_ID}\",
+              \"blocks\": [
+                {
+                  \"type\": \"section\",
+                  \"text\": {
+                    \"type\": \"mrkdwn\",
+                    \"text\": \"📋 *Daily Briefing — ${DATE}*\nClick below to open in your browser.\"
+                  }
+                },
+                {
+                  \"type\": \"actions\",
+                  \"elements\": [
+                    {
+                      \"type\": \"button\",
+                      \"text\": { \"type\": \"plain_text\", \"text\": \"🌐 Open Briefing\", \"emoji\": true },
+                      \"url\": \"${PREVIEW_URL}\",
+                      \"style\": \"primary\"
+                    }
+                  ]
+                }
+              ]
+            }"
 
       - uses: actions/upload-artifact@v4
         if: always()
