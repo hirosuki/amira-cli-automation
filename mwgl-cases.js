@@ -95,6 +95,7 @@ function normalizeCase(row) {
  */
 async function getSalesforceCookies() {
   console.log('🔐 Launching browser for Salesforce authentication...');
+  console.log('  [v5 - debug build - 2026-05-29]');
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -106,25 +107,24 @@ async function getSalesforceCookies() {
     await page.setViewport({ width: 1280, height: 800 });
 
     // Navigate to the correct Salesforce login domain
-    await page.goto('https://istation.my.salesforce.com/login/', { waitUntil: 'networkidle2', timeout: 30000 });
-    console.log(`  Login page URL: ${page.url()}`);
+    // Use domcontentloaded — networkidle2 can hang on SF's tracking scripts
+    await page.goto('https://istation.my.salesforce.com/login/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await new Promise(r => setTimeout(r, 3000)); // let JS render
 
-    // Fill credentials
-    // Dump page state before waiting so we can debug selector issues
+    // === IMMEDIATE DEBUG DUMP (before any waitForSelector) ===
     const preWaitUrl = page.url();
     const preWaitTitle = await page.title();
     console.log(`  Pre-selector URL: ${preWaitUrl}`);
     console.log(`  Pre-selector title: ${preWaitTitle}`);
-
-    // Take a screenshot to see what the page looks like in CI
-    await page.screenshot({ path: 'login-page.png', fullPage: false });
+    await page.screenshot({ path: 'login-page.png', fullPage: true });
     console.log('  Screenshot saved: login-page.png');
-
-    // Dump page HTML for selector debugging
     const pageHtml = await page.content();
     const inputMatches = pageHtml.match(/<input[^>]*id="[^"]*"[^>]*>/g) || [];
-    console.log(`  Input fields found on page: ${inputMatches.length}`);
-    inputMatches.forEach(el => console.log(`    ${el.slice(0, 120)}`));
+    console.log(`  Input fields found: ${inputMatches.length}`);
+    inputMatches.forEach(el => console.log(`    ${el.slice(0, 150)}`));
+    // =========================================================
+
+    console.log(`  Login page URL: ${page.url()}`);
 
     await page.waitForSelector('#username', { timeout: 15000 });
     await page.type('#username', SF_USERNAME);
