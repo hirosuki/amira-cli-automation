@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-29T19:44:12.257Z",
+  "generatedAt": "2026-05-29T19:46:56.343Z",
   "summary": {
     "totalCases": 67,
     "byPriority": {},
@@ -7,7 +7,7 @@
       "Waiting on Customer": 13,
       "New": 26,
       "Email Update": 6,
-      "Follow-Up": 1,
+      "Working": 1,
       "Escalated to Development": 7,
       "Re-opened": 3,
       "In Progress": 3,
@@ -16,7 +16,7 @@
       "Escalated": 1,
       "Merged": 1
     },
-    "asOf": "5/29/2026, 2:44:11 PM"
+    "asOf": "5/29/2026, 2:46:56 PM"
   },
   "cases": [
     {
@@ -75,7 +75,7 @@
       "priority": ""
     },
     {
-      "status": "Follow-Up",
+      "status": "Working",
       "accountName": "Central Stickney School District 110",
       "accountState": "IL",
       "dateTimeOpened": "5/27/2026 1:32 PM",
