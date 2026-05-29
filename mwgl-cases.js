@@ -4,7 +4,7 @@ const { Parser } = require('json2csv');
 
 // Salesforce config
 const REPORT_ID = '00OUb00000JDJUwMAP';
-const SF_LOGIN_URL = 'https://istation.my.salesforce.com';
+const SF_INSTANCE_URL = 'https://istation.my.salesforce.com';
 
 // Priority / status filters
 const ACTIVE_PRIORITIES = ['P0', 'P1', 'P2'];
@@ -17,130 +17,70 @@ const GOOGLE_DRIVE_FOLDER_ID = '1WfFQTkAqwHd-3bObix-2lwrQzRc5T08u';
 const GOOGLE_CREDENTIALS = process.env.GOOGLE_DRIVE_CREDENTIALS
   ? JSON.parse(process.env.GOOGLE_DRIVE_CREDENTIALS)
   : null;
-const SF_USERNAME = process.env.SF_USERNAME;
-const SF_PASSWORD = process.env.SF_PASSWORD;
-const SF_SECURITY_TOKEN = process.env.SF_SECURITY_TOKEN || '';
+const SF_SESSION_ID = process.env.SF_SESSION_ID;
 
 /**
- * Authenticate with Salesforce SOAP login API (no Connected App needed)
- * Returns { accessToken, instanceUrl }
+ * Download report as JSON via SF Analytics REST API using session ID
  */
-async function sfLogin() {
-  console.log('🔐 Authenticating with Salesforce SOAP API...');
-
-  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-                  xmlns:urn="urn:partner.soap.sforce.com">
-  <soapenv:Body>
-    <urn:login>
-      <urn:username>${SF_USERNAME}</urn:username>
-      <urn:password>${SF_PASSWORD}${SF_SECURITY_TOKEN}</urn:password>
-    </urn:login>
-  </soapenv:Body>
-</soapenv:Envelope>`;
-
-  try {
-    const resp = await axios.post(
-      `${SF_LOGIN_URL}/services/Soap/u/59.0`,
-      soapBody,
-      {
-        headers: {
-          'Content-Type': 'text/xml',
-          'SOAPAction': 'login',
-        },
-        timeout: 30000,
-      }
-    );
-
-    const xml = resp.data;
-    console.log('  SOAP response received, parsing...');
-
-    // Extract sessionId and serverUrl from XML response
-    const sessionMatch = xml.match(/<sessionId>([^<]+)<\/sessionId>/);
-    const serverMatch = xml.match(/<serverUrl>([^<]+)<\/serverUrl>/);
-
-    if (!sessionMatch) {
-      // Check for fault
-      const faultMatch = xml.match(/<faultstring>([^<]+)<\/faultstring>/);
-      throw new Error(`SOAP login failed: ${faultMatch ? faultMatch[1] : 'no sessionId in response'}`);
-    }
-
-    const sessionId = sessionMatch[1];
-    const serverUrl = serverMatch[1];
-    // Instance URL is the host part of serverUrl
-    const instanceUrl = serverUrl.match(/^(https?:\/\/[^\/]+)/)[1];
-
-    console.log(`✅ SF login successful. Instance: ${instanceUrl}`);
-    return { accessToken: sessionId, instanceUrl };
-  } catch (err) {
-    const detail = err.response?.data || err.message;
-    throw new Error(`SF SOAP login failed: ${typeof detail === 'string' ? detail.slice(0, 300) : JSON.stringify(detail)}`);
-  }
-}
-
-/**
- * Download report as CSV using SF Analytics REST API
- */
-async function downloadReportCsv(accessToken, instanceUrl) {
+async function downloadReport() {
   console.log('📥 Downloading report via SF Analytics API...');
 
-  const url = `${instanceUrl}/services/data/v59.0/analytics/reports/${REPORT_ID}?includeDetails=true`;
+  if (!SF_SESSION_ID) {
+    throw new Error('SF_SESSION_ID secret is not set.');
+  }
+
+  const url = `${SF_INSTANCE_URL}/services/data/v59.0/analytics/reports/${REPORT_ID}?includeDetails=true`;
+  console.log(`  URL: ${url}`);
 
   const resp = await axios.get(url, {
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${SF_SESSION_ID}`,
       Accept: 'application/json',
     },
     timeout: 30000,
   });
 
-  console.log(`✅ Report data received. Processing...`);
+  console.log(`✅ Report data received (HTTP ${resp.status})`);
   return resp.data;
 }
 
 /**
- * Convert SF Analytics API JSON report into flat case objects
+ * Convert SF Analytics API JSON into flat case objects
  */
 function parseReportData(reportData) {
   const cases = [];
 
-  try {
-    const factMap = reportData.factMap || {};
-    const columns = reportData.reportMetadata?.detailColumns || [];
-    const columnInfo = reportData.reportExtendedMetadata?.detailColumnInfo || {};
+  const factMap = reportData.factMap || {};
+  const columns = reportData.reportMetadata?.detailColumns || [];
+  const columnInfo = reportData.reportExtendedMetadata?.detailColumnInfo || {};
 
-    // Get column label mapping
-    const colLabels = {};
-    columns.forEach(col => {
-      colLabels[col] = columnInfo[col]?.label || col;
-    });
+  // Build column label map
+  const colLabels = {};
+  columns.forEach(col => {
+    colLabels[col] = columnInfo[col]?.label || col;
+  });
 
-    console.log(`  Report columns: ${columns.map(c => colLabels[c]).join(', ')}`);
+  console.log(`  Columns: ${columns.map(c => colLabels[c]).join(', ')}`);
 
-    // Extract rows from factMap (T!T = grand total rows key pattern)
-    Object.entries(factMap).forEach(([key, value]) => {
-      if (!value.rows) return;
-      value.rows.forEach(row => {
-        const caseObj = {};
-        row.dataCells.forEach((cell, idx) => {
-          const colName = colLabels[columns[idx]] || columns[idx];
-          caseObj[colName] = cell.label || cell.value || '';
-        });
-        cases.push(caseObj);
+  // Rows live under keys like "T!T", "0!T", etc.
+  Object.entries(factMap).forEach(([key, value]) => {
+    if (!value.rows) return;
+    value.rows.forEach(row => {
+      const obj = {};
+      row.dataCells.forEach((cell, idx) => {
+        const label = colLabels[columns[idx]] || columns[idx];
+        obj[label] = cell.label || cell.value || '';
       });
+      cases.push(obj);
     });
+  });
 
-    console.log(`  Extracted ${cases.length} rows from report`);
-  } catch (e) {
-    console.error('  Error parsing report JSON:', e.message);
-    throw e;
-  }
-
+  console.log(`  Extracted ${cases.length} total rows`);
   return cases;
 }
 
 /**
- * Normalize to our standard case shape
+ * Normalize to standard case shape using fuzzy key matching
  */
 function normalizeCase(row) {
   const keys = Object.keys(row);
@@ -151,7 +91,6 @@ function normalizeCase(row) {
     }
     return '';
   };
-
   return {
     status: find('Status'),
     accountName: find('Account Name', 'Account'),
@@ -165,7 +104,7 @@ function normalizeCase(row) {
 }
 
 /**
- * Filter active priority cases
+ * Filter to active priority cases only
  */
 function filterCases(cases) {
   return cases.filter(c => {
@@ -178,7 +117,7 @@ function filterCases(cases) {
 }
 
 /**
- * Generate summary
+ * Generate summary metrics
  */
 function generateSummary(cases) {
   const byPriority = {};
@@ -203,7 +142,7 @@ function generateSummary(cases) {
 }
 
 /**
- * Send to Slack
+ * Send summary to Slack
  */
 async function sendToSlack(cases, summary) {
   console.log('📤 Sending to Slack...');
@@ -281,13 +220,7 @@ async function main() {
   try {
     console.log('🚀 Starting MWGL Case Report workflow...');
 
-    // Auth via REST API — no browser, no Puppeteer
-    const { accessToken, instanceUrl } = await sfLogin();
-
-    // Pull report data
-    const reportData = await downloadReportCsv(accessToken, instanceUrl);
-
-    // Parse + normalize
+    const reportData = await downloadReport();
     const rawCases = parseReportData(reportData);
     const allCases = rawCases.map(normalizeCase);
     const filteredCases = filterCases(allCases);
@@ -304,7 +237,10 @@ async function main() {
     console.log('\n✅ Workflow completed successfully!');
   } catch (err) {
     console.error('❌ Workflow failed:', err.message);
-    console.error(err.stack);
+    if (err.response) {
+      console.error('  HTTP status:', err.response.status);
+      console.error('  Response:', JSON.stringify(err.response.data).slice(0, 500));
+    }
     process.exit(1);
   }
 }
