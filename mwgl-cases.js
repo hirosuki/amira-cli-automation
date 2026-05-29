@@ -21,14 +21,17 @@ const SF_USERNAME = process.env.SF_USERNAME;
 const SF_PASSWORD = process.env.SF_PASSWORD;
 
 /**
- * Extract case data from Salesforce report table
- */
+* Extract case data from Salesforce report table
+*/
 async function extractCaseData(page) {
   console.log('Extracting case data from Salesforce report...');
 
   try {
-    // Wait for the report to load
-    await page.waitForSelector('[role="grid"]', { timeout: 15000 });
+    // Wait for the report to load - increased timeout and added fallback selector
+    await page.waitForSelector('[role="grid"]', { timeout: 60000 });
+
+    // Extra wait for dynamic content to fully render
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     // Extract table data
     const cases = await page.evaluate(() => {
@@ -65,18 +68,18 @@ async function extractCaseData(page) {
 }
 
 /**
- * Filter cases by priority and status
- */
+* Filter cases by priority and status
+*/
 function filterCases(cases) {
   return cases.filter((caseItem) => {
     // Extract priority from case number (e.g., "P0-12345" or check status field)
-    const hasPriority = ACTIVE_PRIORITIES.some(p => 
-      caseItem.caseNumber?.includes(p) || 
+    const hasPriority = ACTIVE_PRIORITIES.some(p =>
+      caseItem.caseNumber?.includes(p) ||
       caseItem.subject?.includes(p) ||
       caseItem.status?.includes(p)
     );
 
-    const isNotClosed = !EXCLUDED_STATUSES.some(status => 
+    const isNotClosed = !EXCLUDED_STATUSES.some(status =>
       caseItem.status?.includes(status)
     );
 
@@ -85,8 +88,8 @@ function filterCases(cases) {
 }
 
 /**
- * Generate summary metrics
- */
+* Generate summary metrics
+*/
 function generateSummary(cases) {
   const byPriority = {};
   const byStatus = {};
@@ -113,8 +116,8 @@ function generateSummary(cases) {
 }
 
 /**
- * Format and send summary to Slack
- */
+* Format and send summary to Slack
+*/
 async function sendToSlack(cases, summary) {
   console.log('Sending summary to Slack...');
 
@@ -185,8 +188,8 @@ async function sendToSlack(cases, summary) {
 }
 
 /**
- * Upload CSV to Google Drive
- */
+* Upload CSV to Google Drive
+*/
 async function uploadToGoogleDrive(cases) {
   console.log('Uploading CSV to Google Drive...');
 
@@ -235,8 +238,8 @@ async function uploadToGoogleDrive(cases) {
 }
 
 /**
- * Main execution
- */
+* Main execution
+*/
 async function main() {
   let browser;
 
@@ -254,18 +257,38 @@ async function main() {
     // Set viewport for stability
     await page.setViewport({ width: 1280, height: 720 });
 
-    // Navigate to report
-    console.log('📍 Navigating to Salesforce report...');
-    await page.goto(REPORT_URL, { waitUntil: 'networkidle2', timeout: 30000 });
+    // Navigate to Salesforce login page first
+    console.log('🔐 Navigating to Salesforce login...');
+    await page.goto('https://istation.lightning.force.com', { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // Check if login is required
-    const loginUrl = page.url();
-    if (loginUrl.includes('login')) {
-      console.log('🔐 Login required. Attempting to authenticate...');
+    // Perform login if login page is shown
+    const currentUrl = page.url();
+    if (currentUrl.includes('login') || currentUrl.includes('salesforce.com/') && !currentUrl.includes('lightning')) {
+      console.log('🔐 Login page detected. Authenticating...');
+      await page.waitForSelector('#username', { timeout: 15000 });
       await page.type('#username', SF_USERNAME);
       await page.type('#password', SF_PASSWORD);
       await page.click('#Login');
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+      console.log('✅ Login successful');
+    } else {
+      console.log('✅ Already authenticated or redirected');
+    }
+
+    // Now navigate to the report
+    console.log('📍 Navigating to Salesforce report...');
+    await page.goto(REPORT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+
+    // If redirected to login again after navigating to report, re-authenticate
+    const reportUrl = page.url();
+    if (reportUrl.includes('login')) {
+      console.log('🔐 Re-authentication required after report navigation...');
+      await page.waitForSelector('#username', { timeout: 15000 });
+      await page.type('#username', SF_USERNAME);
+      await page.type('#password', SF_PASSWORD);
+      await page.click('#Login');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+      await page.goto(REPORT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
     }
 
     // Extract data
