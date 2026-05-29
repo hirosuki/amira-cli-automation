@@ -1,9 +1,6 @@
 name: MWGL Case Report
 
 on:
-  schedule:
-    # Every weekday at 7:50 AM CST (13:50 UTC)
-    - cron: '50 13 * * 1-5'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
