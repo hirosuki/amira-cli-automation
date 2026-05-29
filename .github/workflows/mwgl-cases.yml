@@ -2,7 +2,7 @@ name: MWGL Case Report
 
 on:
   schedule:
-    - cron: '50 13 * * 1-5'
+    - cron: '55 13 * * 1-5'
   workflow_dispatch:
 
 jobs:
