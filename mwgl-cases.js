@@ -132,12 +132,33 @@ function generateSummary(cases) {
   const byPriority = {};
   const byStatus = {};
 
+  // Log actual priority values from first few cases for debugging
+  const samplePriorities = [...new Set(cases.map(c => c.priority).filter(Boolean))];
+  console.log(`  Priority values found: ${JSON.stringify(samplePriorities)}`);
+
+  // Map SF priority labels → P0/P1/P2
+  const priorityMap = {
+    'critical': 'P0', 'urgent': 'P0', 'p0': 'P0',
+    'high': 'P1', 'p1': 'P1',
+    'medium': 'P2', 'normal': 'P2', 'p2': 'P2',
+    'low': 'P3',
+  };
+
   cases.forEach(c => {
-    ACTIVE_PRIORITIES.forEach(p => {
-      if (c.caseNumber?.includes(p) || c.subject?.includes(p) || c.status?.includes(p)) {
-        byPriority[p] = (byPriority[p] || 0) + 1;
-      }
-    });
+    // Map priority field value first
+    const rawPriority = (c.priority || '').toLowerCase().trim();
+    const mappedPriority = priorityMap[rawPriority];
+    if (mappedPriority && ['P0','P1','P2'].includes(mappedPriority)) {
+      byPriority[mappedPriority] = (byPriority[mappedPriority] || 0) + 1;
+    } else {
+      // Fallback: check if P0/P1/P2 appears in other fields
+      ACTIVE_PRIORITIES.forEach(p => {
+        if (c.caseNumber?.includes(p) || c.subject?.includes(p)) {
+          byPriority[p] = (byPriority[p] || 0) + 1;
+        }
+      });
+    }
+
     const s = c.status || 'Unknown';
     byStatus[s] = (byStatus[s] || 0) + 1;
   });
