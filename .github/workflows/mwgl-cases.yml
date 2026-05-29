@@ -38,4 +38,6 @@ jobs:
             *.log
             *.csv
             *.png
+            dashboard/MWGL_Cases_*.html
+          if-no-files-found: warn
           retention-days: 7
