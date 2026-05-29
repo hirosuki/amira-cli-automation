@@ -1,22 +1,21 @@
 {
-  "generatedAt": "2026-05-29T19:49:37.094Z",
+  "generatedAt": "2026-05-29T20:06:35.110Z",
   "summary": {
-    "totalCases": 67,
+    "totalCases": 68,
     "byPriority": {},
     "byStatus": {
       "Waiting on Customer": 13,
-      "New": 26,
+      "New": 27,
       "Email Update": 6,
-      "Working": 1,
+      "Re-opened": 4,
       "Escalated to Development": 7,
-      "Re-opened": 3,
       "In Progress": 3,
       "Closed / Complete": 5,
       "Escalated from Bot": 1,
       "Escalated": 1,
       "Merged": 1
     },
-    "asOf": "5/29/2026, 2:49:36 PM"
+    "asOf": "5/29/2026, 3:06:34 PM"
   },
   "cases": [
     {
@@ -75,7 +74,7 @@
       "priority": ""
     },
     {
-      "status": "Working",
+      "status": "Re-opened",
       "accountName": "Central Stickney School District 110",
       "accountState": "IL",
       "dateTimeOpened": "5/27/2026 1:32 PM",
@@ -754,6 +753,17 @@
       "subject": "Ticket ID ##RE-172558## has been assigned and a Technician will be in contact with you shortly.",
       "caseOwner": "Amira Automated Support",
       "age": "144",
+      "priority": ""
+    },
+    {
+      "status": "New",
+      "accountName": "Central Stickney School District 110",
+      "accountState": "IL",
+      "dateTimeOpened": "5/29/2026 2:56 PM",
+      "caseNumber": "01063439",
+      "subject": "Closed Won opportunity for Central Stickney School District 110",
+      "caseOwner": "Pod - Scaled Success",
+      "age": "0",
       "priority": ""
     }
   ]
